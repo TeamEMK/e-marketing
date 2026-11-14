@@ -28,7 +28,7 @@ export default function DrReminders() {
       <div className="dr-reminder-info">
         <div className="dr-reminder-title">📢 Daily Reminder</div>
         <div className="dr-reminder-sub">
-          {'\n            Auto-runs every day at '}<b>7:30 PM IST</b>{' · Sends WhatsApp to group with names of users who haven\'t filled today\'s report (CXO excluded)\n          '}
+          {'\n            Auto-runs every day at '}<b>8:00 PM IST</b>{' · Sends WhatsApp to group with names of users who haven\'t filled today\'s report (CXO excluded)\n          '}
         </div>
       </div>
       <div className="dr-reminder-actions">

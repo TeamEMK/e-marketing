@@ -148,7 +148,7 @@ function UserFormBody({ data, onClose }) {
           🚫 Exclude from Daily Reminder
         </label>
         <div ref={css('font-size:11px;color:#92400e;margin-top:4px;margin-left:24px')}>
-          This user will <b>not</b> appear in the 7:30 PM daily reminder (use to exclude beyond CXO)
+          This user will <b>not</b> appear in the 8:00 PM daily reminder (use to exclude beyond CXO)
         </div>
       </div>
       <div className="modal-footer" ref={css('justify-content:space-between')}>
