@@ -153,6 +153,7 @@ async function ntRefreshBell() {
     const r = await api('/api/tasks/notifications');
     if (!r || r.error) return;
     _ntItems = r.items || [];
+    ntDesktopNotify(_ntItems);
     if (_ntBellReact({ unread: r.unread || 0, items: _ntItems })) return;
     const badge = document.getElementById('ntBadge');
     if (!badge) return;
@@ -230,6 +231,73 @@ document.addEventListener('click', e => {
   const wrap = document.getElementById('ntBellWrap');
   if (wrap && !wrap.contains(e.target)) document.getElementById('ntPanel')?.classList.remove('open');
 });
+
+// ══════════════════════════════════════════════════════
+// WINDOWS (DESKTOP) NOTIFICATION
+//
+// The popup and the bell only show while someone is looking at the app. This
+// puts a system notification in the corner of the screen when a task is
+// delegated to them and the app is open but not in front: minimised, behind
+// another window, or in a background tab. It rides the bell's 30-second poll
+// (a background tab may be slowed to once a minute), so there is no new
+// request and nothing on the server.
+//
+// Each task is announced once per browser: the ids already announced are kept
+// in localStorage per user, which also stops a second open tab repeating it.
+// While the app is in front nothing pops up, since the in-app popup is there;
+// the task still counts as announced. Five or more at once (a bulk upload)
+// become a single "N new tasks" notification.
+// ══════════════════════════════════════════════════════
+const NT_DESK_KEEP = 300;   // announced ids remembered per user
+
+function _ntDeskKey() { return 'ntDeskSeen:' + (ME && ME.id); }
+function _ntDeskRead() {
+  try { return new Set(JSON.parse(localStorage.getItem(_ntDeskKey()) || '[]')); } catch { return new Set(); }
+}
+function _ntDeskWrite(set) {
+  try { localStorage.setItem(_ntDeskKey(), JSON.stringify([...set].slice(-NT_DESK_KEEP))); } catch {}
+}
+
+function ntDesktopNotify(items) {
+  if (!('Notification' in window) || !ME || ME.role === 'client') return;
+  let firstRun = false;
+  try { firstRun = localStorage.getItem(_ntDeskKey()) === null; } catch { return; }
+  const seen = _ntDeskRead();
+  const todo = (items || []).filter(t => t.is_new && !seen.has(t.id));
+  // The first time in a browser, what is already waiting is not news (the popup
+  // shows it on opening): it is recorded, even when nothing is, so later
+  // arrivals are told apart from it.
+  if (firstRun || todo.length) { todo.forEach(t => seen.add(t.id)); _ntDeskWrite(seen); }
+  if (firstRun || !todo.length || Notification.permission !== 'granted' || document.hasFocus()) return;
+
+  const open = n => { n.onclick = () => { window.focus(); n.close(); if (typeof navigate === 'function') navigate('alltasks'); }; };
+  if (todo.length >= 5) {
+    open(new Notification(`${todo.length} new tasks assigned to you`, {
+      body: 'Open All Tasks to see them.', icon: '/emarketing-logo.png', tag: 'emk-tasks-bulk' }));
+    return;
+  }
+  todo.forEach(t => {
+    const bits = ['From ' + (t.assigned_by_name || 'someone')];
+    if (t.client_name) bits.push(t.client_name);
+    bits.push(t.awaiting_due_date ? 'You set the date' : (t.due_date ? 'Due ' + ntDate(t.due_date) : 'No date'));
+    open(new Notification('New task assigned to you', {
+      body: (t.description || '').slice(0, 180) + '\n' + bits.join(' · '),
+      icon: '/emarketing-logo.png', tag: 'emk-task-' + t.id }));
+  });
+}
+
+// Windows notifications need the browser's permission, which it only lets a
+// page ask for after a click. Asked on the first click in the app, once per
+// session while it is still undecided; the browser remembers Allow or Block,
+// and a Block is never asked again.
+document.addEventListener('click', () => {
+  try {
+    if (!('Notification' in window) || Notification.permission !== 'default') return;
+    if (!ME || ME.role === 'client' || sessionStorage.getItem('ntDeskAsked')) return;
+    sessionStorage.setItem('ntDeskAsked', '1');
+    Notification.requestPermission();
+  } catch {}
+}, true);
 
 function ntDate(d) {
   return (typeof fmtDate === 'function') ? fmtDate(d) : d;
