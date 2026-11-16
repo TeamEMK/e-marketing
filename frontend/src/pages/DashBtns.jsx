@@ -2,8 +2,8 @@
 // in public/js/dashboard.js wrote there, plus the two buttons core.js
 // renderManpurTasksBtn / renderBaCredentialsBtn put in front of it).
 // dashboard.js hands over which ones show through dashBtnsSetReact
-//   { holidays, checklist, delegate, transfer, manpur: url | null, ba }
-// Order as before: BA Credentials, Manpur Tasks, Holidays, Checklist, Delegate, Transfer.
+//   { holidays, checklist, delegate, transfer, manpur: url | null, ba, ai: url | null }
+// Order: AI Dashboard (admins), BA Credentials, Manpur Tasks, Holidays, Checklist, Delegate, Transfer.
 // amber-ui.js still moves #dashBtns into the top bar and shows / hides it.
 import { useEffect, useState } from 'react';
 import { legacy, css } from '../lib/app.js';
@@ -20,6 +20,11 @@ export default function DashBtns() {
   }, []);
   if (!v) return null;
   return <>
+    {v.ai
+      ? <button key="ai" id="aiDashboardBtn" type="button" className="btn dash-btn-quiet" ref={css('background:#0f172a;color:#fff')}
+          title="Opens the AI Master Dashboard in a new tab"
+          onClick={() => window.open(v.ai, '_blank', 'noopener')}>🤖 AI Dashboard</button>
+      : null}
     {v.ba
       ? <button key="ba" id="baCredentialsBtn" type="button" className="btn" title="Client credentials, from the EMK Client Credentials sheet"
           ref={baStyle} onClick={() => legacy('navigate', 'emkcreds')}>🔐 Business Automation Credentials</button>
