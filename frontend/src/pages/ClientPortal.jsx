@@ -367,12 +367,25 @@ function DelegateBody({ d, close }) {
   const [priority, setPriority] = useState('low');
   const [remarks, setRemarks] = useState('');
   const [err, setErr] = useState('');
+  // This client's projects (Client Master → Projects): required when it has any; one is picked.
+  const [projects, setProjects] = useState([]);
+  const [project, setProject] = useState('');
+  useEffect(() => {
+    let live = true;
+    api('/api/client-portal/projects').then(r => {
+      if (!live || !Array.isArray(r)) return;
+      setProjects(r.map(p => ({ value: String(p.id), label: p.name })));
+      if (r.length === 1) setProject(String(r[0].id));
+    });
+    return () => { live = false; };
+  }, []);
   const save = async () => {
     setErr('');
     const text = desc.trim();
     if (!text) return setErr('Description required');
     if (!date) return setErr('Due date required');
-    const r = await api('/api/tasks', 'POST', { type: 'delegation', desc: text, date, priority, remarks: remarks.trim(), approval: 'no', assignedTo: handler || undefined });
+    if (projects.length && !project) return setErr('Please select a project');
+    const r = await api('/api/tasks', 'POST', { type: 'delegation', desc: text, date, priority, remarks: remarks.trim(), approval: 'no', assignedTo: handler || undefined, project_id: project || undefined });
     if (r.error) return setErr(r.error);
     toast('✅ Task sent to your handler');
     close();
@@ -386,6 +399,8 @@ function DelegateBody({ d, close }) {
         <SearchSelect value={handler} onChange={setHandler} options={d.options} style={{ fontWeight: 600 }} /></div>
       <div className="form-group"><label>Description *</label>
         <textarea rows={3} placeholder="What needs to be done?" value={desc} onChange={e => setDesc(e.target.value)} /></div>
+      {projects.length ? <div className="form-group"><label>Project *</label>
+        <SearchSelect value={project} onChange={setProject} placeholder="— Select Project —" options={[{ value: '', label: '— Select Project —' }, ...projects]} /></div> : null}
       <div className="form-row">
         <div className="form-group"><label>Due Date *</label><input type="date" min={d.today} value={date} onChange={e => setDate(e.target.value)} /></div>
         <div className="form-group"><label>Priority</label><SearchSelect value={priority} onChange={setPriority} options={PRIORITIES} /></div>

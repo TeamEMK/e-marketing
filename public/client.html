@@ -217,6 +217,11 @@ function cpTogglePin(){const on=!document.documentElement.classList.contains('cp
       <label>Description *</label>
       <textarea id="cpDelDesc" rows="3" placeholder="What needs to be done?"></textarea>
     </div>
+    <!-- The client's projects (kept in Client Master); shown, and required, only when it has some. -->
+    <div class="form-group" id="cpDelProjectRow" style="display:none">
+      <label>Project *</label>
+      <select id="cpDelProject"></select>
+    </div>
     <!-- Only for client-owned tasks: the handler commits them to a date AND time. -->
     <div class="form-group" id="cpDelDueRow" style="display:none">
       <label>Due date &amp; time *</label>
@@ -1026,6 +1031,22 @@ function cpDelDoerChange(){
   }
 }
 
+// The new-task form's Project list: this client's active projects. With none
+// the row stays hidden and no project is sent; with one, it is picked.
+async function cpLoadProjects(){
+  const row = document.getElementById('cpDelProjectRow');
+  const sel = document.getElementById('cpDelProject');
+  row.style.display = 'none';
+  sel.innerHTML = '';
+  try {
+    const list = await api(cpUrl('/api/client-portal/projects'));
+    if (!Array.isArray(list) || !list.length) return;
+    sel.innerHTML = (list.length > 1 ? '<option value="">— Select Project —</option>' : '') +
+      list.map(p => `<option value="${p.id}">${dtEscape(p.name)}</option>`).join('');
+    row.style.display = 'block';
+  } catch (e) { /* the server still asks for a project if one is needed */ }
+}
+
 function cpOpenDelegate(){
   if (!CP_CAN_CREATE_TASK) { showToast('Read-only preview — only the client can do this', 'error'); return; }
   if (!_cpMe?.handler_id) { showToast('No handler assigned — contact admin', 'error'); return; }
@@ -1047,6 +1068,7 @@ function cpOpenDelegate(){
   document.getElementById('cpDelDesc').value = '';
   document.getElementById('cpDelRemarks').value = '';
   document.getElementById('cpDelPriority').value = 'low';
+  cpLoadProjects();
   // Same form either way; only the wording says who is assigning to whom.
   document.getElementById('cpDelTitle').textContent = CP_IS_PREVIEW
     ? `＋ Assign Task for ${_cpMe.name || 'this client'}`
@@ -1072,12 +1094,16 @@ async function cpSaveDelegate(){
   const priority = document.getElementById('cpDelPriority').value;
   const remarks = document.getElementById('cpDelRemarks').value.trim();
   if (!desc) { err.textContent = 'Description required'; err.style.display = 'block'; return; }
+  const projectShown = document.getElementById('cpDelProjectRow').style.display !== 'none';
+  const projectId = projectShown ? document.getElementById('cpDelProject').value : '';
+  if (projectShown && !projectId) { err.textContent = 'Please select a project'; err.style.display = 'block'; return; }
   // A client sends nothing extra — the server resolves their own client and
   // handler from the session. Staff previewing must name both explicitly, since
   // their session says nothing about which client this page is showing. Either
   // way the task lands on the client's handler with the doer setting the date;
   // assigned_by is whoever is logged in, so the audit trail stays honest.
   const payload = { type:'delegation', desc, priority, remarks, approval:'no', doerSetsDueDate:true };
+  if (projectId) payload.project_id = projectId;
   const toClient = CP_IS_PREVIEW && document.getElementById('cpDelDoer')?.value === 'client';
   // Which handler the client picked. In toClient mode the select shows the
   // client's name (no numeric value), so we ignore it and use portal_user_id.

@@ -860,6 +860,7 @@ async function cmShowDetail(id, from, to) {
       const ops = cmCanEditOps(s.client || {}, Array.isArray(handlers) ? handlers : []);
       _cmDetMount('cmdetsettings', 'cmDetSettings', { id, client: s.client || {}, depts: cmAllDepts(), ops });
       _cmDetMount('cmdetlinks', 'cmDetLinks', { id, links: CM_LINKS, ops });
+      _cmDetMount('cmdetprojects', 'cmDetProjects', { id, ops });
       _cmDetMount('cmdetdms', 'cmDetDms', { id, ops });
       if (ME.canManageInvoices) _cmDetMount('cmdetinv', 'cmDetInv', { id });
     }
@@ -1273,7 +1274,7 @@ function cmRenderDetailHtml(s, id, currentHandlers) {
       </div>
     </div>`}
 
-    ${_cmDetOn() ? '<div id="cmDetLinks" data-react-quiet="1"></div>' : `
+    ${_cmDetOn() ? '<div id="cmDetLinks" data-react-quiet="1"></div><div id="cmDetProjects" data-react-quiet="1"></div>' : `
     <div class="task-table-card" id="cmLinksCard" style="${canEditClientOps ? '' : 'display:none;'}padding:14px 18px;margin-top:16px;transition:box-shadow .3s,border-color .3s">
       <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px">
         <div class="card-head-title">🔗 System Links <span style="font-weight:400;color:#94a3b8;font-size:12px">— shown on this client's portal</span></div>

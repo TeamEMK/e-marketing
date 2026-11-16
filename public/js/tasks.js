@@ -1332,7 +1332,11 @@ async function taskEditSend(id, type, f, close) {
   if (!date)  return 'Date required';
 
   const client_id = f.client || null;
+  if (f.needProject && !f.project) return 'Please select a project';
   const body = { desc, date, remarks, type, client_id };
+  // The React form always says which project (or none); the old modal has no
+  // project field, so it sends none and the server keeps what the task has.
+  if (f.project !== undefined) body.project_id = f.project || null;
   if (type === 'delegation') {
     body.priority = f.priority;
     body.approval = f.approval;
@@ -1717,8 +1721,10 @@ async function taskDelegateSend(f, rows, ui) {
   const url = f.url.trim() || null;
   const approver = approval === 'yes' ? f.approver : '';
   const client_id = f.client || null;
+  const project_id = f.project || null;
   if (!doer) return 'Please select a doer';
   if (!client_id) return 'Please select a client';
+  if (f.needProject && !project_id) return 'Please select a project';
   if (approval === 'yes' && !approver) return 'Please select an approver';
   // Every card becomes its own task; the fields above are shared by all of them.
   const tasks = [];
@@ -1745,7 +1751,7 @@ async function taskDelegateSend(f, rows, ui) {
     for (let i = 0; i < tasks.length; i++) {
       const t = tasks[i];
       ui.busy(tasks.length > 1 ? `Assigning ${i + 1}/${tasks.length}…` : 'Assigning…');
-      const r = await api('/api/tasks','POST',{type:'delegation',desc:t.desc,assignedTo:doer,date:t.date,priority:t.priority,approval,approver,remarks,client_id,url,doerSetsDueDate:t.doerSetsDueDate,quietEmail:tasks.length>1});
+      const r = await api('/api/tasks','POST',{type:'delegation',desc:t.desc,assignedTo:doer,date:t.date,priority:t.priority,approval,approver,remarks,client_id,project_id,url,doerSetsDueDate:t.doerSetsDueDate,quietEmail:tasks.length>1});
       if (r.error) { failed = r.error; break; }
       t.res = r;
     }
@@ -1924,9 +1930,11 @@ async function taskChecklistSend(f, busy, done, close) {
   const remarks = f.remarks.trim();
   const freq    = f.freq;
   const clientVal = f.client;
+  const project_id = f.project || null;
 
   if (!doer) return 'Please select an employee';
   if (!clientVal) return 'Please select a client';
+  if (f.needProject && !project_id) return 'Please select a project';
   if (!date) return 'Please select a start date';
   if (!desc) return 'Task name is required';
   if (endDate && endDate < date) return 'End date must be on or after start date';
@@ -1942,7 +1950,7 @@ async function taskChecklistSend(f, busy, done, close) {
   const client_id = clientVal;
 
   const result = await api('/api/tasks/bulk-checklist','POST',{
-    desc, assignedTo: doer, priority: 'low', remarks, dates, client_id
+    desc, assignedTo: doer, priority: 'low', remarks, dates, client_id, project_id
   });
 
   busy(false);
@@ -2091,19 +2099,21 @@ function formatDate(d) {
 // ══════════════════════════════════════════════════════
 function downloadSample() {
   // status is optional: "done" creates the task already marked done.
-  const csv = `doer_email,approver_email,due_date,priority,approval,description,remarks,client_name,status\npriyanka@test.com,aman@test.com,2026-04-01,high,yes,Complete sales report,Follow up needed,Ambraee,\npooja@test.com,aman@test.com,2026-04-02,medium,no,Prepare presentation,,Sohan Health Care,done`;
+  // project: the client's project by name (Client Master → Projects); required
+  // for a client that has projects.
+  const csv = `doer_email,approver_email,due_date,priority,approval,description,remarks,client_name,project,status\npriyanka@test.com,aman@test.com,2026-04-01,high,yes,Complete sales report,Follow up needed,Ambraee,ERP,\npooja@test.com,aman@test.com,2026-04-02,medium,no,Prepare presentation,,Sohan Health Care,Google Sheet,done`;
   downloadFile(csv,'delegation_sample.csv');
 }
 
 function downloadSampleC() {
   const csv = [
-    'user_email,frequency,start_date,description,remarks,client_name',
-    'priyanka@test.com,daily,2026-04-01,Review attendance sheet,,Ambraee',
-    'pooja@test.com,weekly,2026-04-01,Send weekly report,,Ambraee',
-    'rahul@test.com,monthly,2026-04-01,Submit monthly expense report,April month,Sohan Health Care',
-    'neha@test.com,yearly,2026-04-01,Annual performance self-review,,Sohan Health Care',
-    'amit@test.com,alternative_week,2026-04-01,Bi-weekly team sync notes,,Ambraee',
-    'sneha@test.com,quarterly,2026-04-01,Quarterly audit checklist,Q2 2026,Sohan Health Care',
+    'user_email,frequency,start_date,description,remarks,client_name,project',
+    'priyanka@test.com,daily,2026-04-01,Review attendance sheet,,Ambraee,ERP',
+    'pooja@test.com,weekly,2026-04-01,Send weekly report,,Ambraee,ERP',
+    'rahul@test.com,monthly,2026-04-01,Submit monthly expense report,April month,Sohan Health Care,Google Sheet',
+    'neha@test.com,yearly,2026-04-01,Annual performance self-review,,Sohan Health Care,Google Sheet',
+    'amit@test.com,alternative_week,2026-04-01,Bi-weekly team sync notes,,Ambraee,ERP',
+    'sneha@test.com,quarterly,2026-04-01,Quarterly audit checklist,Q2 2026,Sohan Health Care,Google Sheet',
   ].join('\n');
   downloadFile(csv,'checklist_bulk_sample.csv');
 }
@@ -2197,6 +2207,12 @@ async function taskDelegateCsvSend(file, busy, close) {
   const clientKey = s => (s || '').toLowerCase().replace(/\s+/g, '');
   const clientByName = {};
   (allClients || []).forEach(c => { clientByName[clientKey(c.name)] = c.id; });
+  // Each client's active projects, fetched once per client the sheet names.
+  const projectsOf = {};
+  const clientProjects = async cid => {
+    if (!projectsOf[cid]) { const r = await api(`/api/clients/${cid}/projects`); projectsOf[cid] = Array.isArray(r) ? r : []; }
+    return projectsOf[cid];
+  };
   const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
   // A row that cannot be read is left out and reported, never saved half-right.
   const problems = [];
@@ -2228,11 +2244,25 @@ async function taskDelegateCsvSend(file, busy, close) {
       : '';
     // Row numbers as the spreadsheet shows them: the header is row 1.
     if (why) { problems.push(`Row ${n + 1}: ${why}`); continue; }
+    // project: matched by name (spaces and case ignored) among the client's projects.
+    const projectName = get(r, 'project');
+    let project_id = null;
+    if (client_id) {
+      const plist = await clientProjects(client_id);
+      if (projectName) {
+        const hit = plist.find(p => clientKey(p.name) === clientKey(projectName));
+        if (!hit) { problems.push(`Row ${n + 1}: no project named "${projectName}" for client "${clientName}"`); continue; }
+        project_id = hit.id;
+      } else if (plist.length) {
+        problems.push(`Row ${n + 1}: client "${clientName}" needs a project (${plist.map(p => p.name).join(', ')})`);
+        continue;
+      }
+    } else if (projectName) { problems.push(`Row ${n + 1}: a project needs a client_name`); continue; }
     const res = await api('/api/tasks', 'POST', {
       type: 'delegation', desc: description, assignedTo: doer.id,
       approverEmail: get(r, 'approver_email'), date, priority,
       approval: get(r, 'approval').toLowerCase() === 'yes' ? 'yes' : 'no',
-      remarks: get(r, 'remarks'), client_id, quietEmail: true,
+      remarks: get(r, 'remarks'), client_id, project_id, quietEmail: true,
       // A done row is a record of finished work: the server creates it completed on
       // its own date, which stays as the sheet has it (no holiday move, no late mark).
       bulkDone: markDone
@@ -2312,25 +2342,43 @@ async function taskChecklistCsvSend(file, close) {
   const [allUsers, allClients] = await Promise.all([api('/api/users'), api('/api/clients')]);
   const clientByName = {};
   (allClients || []).forEach(c => { clientByName[c.name.toLowerCase().trim()] = c.id; });
+  // Each client's active projects, fetched once per client the sheet names.
+  const projectsOf = {};
+  const clientProjects = async cid => {
+    if (!projectsOf[cid]) { const r = await api(`/api/clients/${cid}/projects`); projectsOf[cid] = Array.isArray(r) ? r : []; }
+    return projectsOf[cid];
+  };
+  const nameKey = s => (s || '').toLowerCase().replace(/\s+/g, '');
+  const projectProblems = [];
 
   let totalTasks = 0, skipped = 0;
   const validFreqs = ['daily','weekly','alternative_week','monthly','quarterly','yearly'];
 
   showToast('⏳ Generating tasks, please wait…');
 
-  for (const line of dataLines) {
+  for (let li = 0; li < dataLines.length; li++) {
+    const line = dataLines[li];
     if (!line.trim()) continue;
 
-    let user_email, frequency, start_date, description, remarks, client_name, client_id;
+    let user_email, frequency, start_date, description, remarks, client_name, client_id, project, project_id = null;
 
     if (isNewFormat) {
-      // New format: user_email, frequency, start_date, description, remarks, client_name
-      [user_email, frequency, start_date, description, remarks, client_name] = line.split(',').map(s => s.trim());
+      // New format: user_email, frequency, start_date, description, remarks, client_name, project
+      [user_email, frequency, start_date, description, remarks, client_name, project] = line.split(',').map(s => s.trim());
       if (!user_email || !description || !frequency || !start_date || !client_name) { skipped++; continue; }
       frequency = frequency.toLowerCase();
       if (!validFreqs.includes(frequency)) { skipped++; continue; }
       client_id = clientByName[client_name.toLowerCase()];
       if (!client_id) { skipped++; continue; }
+      // project: by name among the client's projects; required when it has some.
+      const plist = await clientProjects(client_id);
+      if (project) {
+        const hit = plist.find(p => nameKey(p.name) === nameKey(project));
+        if (!hit) { skipped++; projectProblems.push(`Row ${li + 2}: no project named "${project}" for client "${client_name}"`); continue; }
+        project_id = hit.id;
+      } else if (plist.length) {
+        skipped++; projectProblems.push(`Row ${li + 2}: client "${client_name}" needs a project (${plist.map(p => p.name).join(', ')})`); continue;
+      }
     } else {
       // Old format fallback: user_email, due_date, priority, description, remarks
       let due_date, priority;
@@ -2358,7 +2406,8 @@ async function taskChecklistCsvSend(file, close) {
       priority: 'low',
       remarks: remarks || '',
       dates,
-      client_id
+      client_id,
+      project_id
     });
 
     if (!result.error) totalTasks += dates.length;
@@ -2366,6 +2415,7 @@ async function taskChecklistCsvSend(file, close) {
   }
 
   showToast(`✅ ${totalTasks} tasks generated!${skipped ? ` (${skipped} rows skipped)` : ''}`);
+  if (projectProblems.length) appAlert(`These rows were skipped for their project:\n\n${projectProblems.join('\n')}`, 'Checklist upload');
   close();
   loadDashboard(true);
 }

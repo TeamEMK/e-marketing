@@ -149,6 +149,7 @@ const PAGES = {
   cmdetstats: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetStats }))),
   cmdetsettings: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetSettings }))),
   cmdetlinks: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetLinks }))),
+  cmdetprojects: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetProjects }))),
   cmdetdms: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetDms }))),
   cmdetinv: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetInvoices }))),
   cmdethead: lazy(() => import('./pages/CmDetail.jsx').then(m => ({ default: m.CmDetHead }))),

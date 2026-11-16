@@ -242,6 +242,9 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         doerIsClient = true;
       }
     }
+    const prj = await resolveTaskProject(enforcedClientId, req.body.project_id);
+    if (prj.error) return res.status(400).json(prj);
+    const projectId = prj.projectId;
     // The CSV bulk upload only, for a row marked done: a record of work that already
     // happened on `date`. The task is created completed on that date, and the date is
     // kept as the sheet has it (no holiday / week-off move), so it counts as on time.
@@ -305,7 +308,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
       const selfAssigned = String(assignedBy) === String(targetUser);
       // A bulk "done" row is inserted completed, done at noon of its date (noon so the
       // date reads the same in IST and UTC), and already seen: it is a record, not news.
-      const [insD] = await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,url,awaiting_due_date,seen_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, bulkDone ? 'completed' : 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, url||null, doerWillSet ? 1 : 0, (selfAssigned || bulkDone) ? new Date() : null, bulkDone ? `${effectiveDate} 12:00:00` : null]);
+      const [insD] = await db.query(`INSERT INTO delegation_tasks (description,assigned_to,assigned_by,due_date,due_time,status,priority,approval,remarks,client_id,project_id,url,awaiting_due_date,seen_at,completed_at) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`, [desc, targetUser, assignedBy, effectiveDate, dueTime, bulkDone ? 'completed' : 'pending', priority||'low', approval||'no', remarks||'', enforcedClientId, projectId, url||null, doerWillSet ? 1 : 0, (selfAssigned || bulkDone) ? new Date() : null, bulkDone ? `${effectiveDate} 12:00:00` : null]);
       newTaskId = insD.insertId;
       if (bulkDone) logTaskActivity({ taskId: newTaskId, taskType: 'delegation', newStatus: 'completed',
         changedBy: req.session.userId, source: 'bulk-upload-done', note: `done on ${effectiveDate}` });
@@ -367,7 +370,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         desc, assignedTo: targetUser, assignedBy: req.session.userId,
         clientId: enforcedClientId, dueDate: effectiveDate });
       if (dupId) return res.json({ success: true, duplicate: true, id: dupId });
-      const [insC] = await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id) VALUES (?,?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, effectiveDate, 'pending', priority||'low', remarks||'', enforcedClientId]);
+      const [insC] = await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id,project_id) VALUES (?,?,?,?,?,?,?,?,?)`, [desc, targetUser, req.session.userId, effectiveDate, 'pending', priority||'low', remarks||'', enforcedClientId, projectId]);
       newTaskId = insC.insertId;
     }
     res.json({ success: true, id: newTaskId, adjusted, effectiveDate, adjustedReason, completed: !!(bulkDone && newTaskId) });
@@ -606,6 +609,23 @@ app.post('/api/tasks/notify-batch', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// The client's project (client_projects, kept in Client Master) for a new task.
+// Once the client has an active project, the task must name one of them; a
+// task with no client has none. Returns { projectId } or the 400 body
+// { error, needProject? }. (The WhatsApp-bot approvals in server.js insert
+// without one: they have no project to give.)
+async function resolveTaskProject(clientId, rawProjectId) {
+  const raw = parseInt(rawProjectId, 10);
+  const asked = Number.isFinite(raw) && raw > 0 ? raw : null;
+  if (!clientId) return asked ? { error: 'A project needs a client' } : { projectId: null };
+  const [projects] = await db.query('SELECT id FROM client_projects WHERE client_id=? AND is_active=1', [clientId]);
+  if (asked) {
+    return projects.some(p => Number(p.id) === asked)
+      ? { projectId: asked } : { error: 'That project is not one of this client\'s projects' };
+  }
+  return projects.length ? { error: 'Pick a project for this client', needProject: true } : { projectId: null };
+}
+
 app.post('/api/tasks/bulk-checklist', requireAuth, async (req, res) => {
   try {
     if (!(await userCanDo(req.session, 'create_checklist'))) {
@@ -618,6 +638,8 @@ app.post('/api/tasks/bulk-checklist', requireAuth, async (req, res) => {
     if (!Array.isArray(dates) || dates.length > 800) return res.status(400).json({ error: 'Too many dates in one go' });
     const cidRaw = client_id != null ? client_id : clientId;
     const cid = (() => { const n = parseInt(cidRaw, 10); return Number.isFinite(n) && n > 0 ? n : null; })();
+    const prj = await resolveTaskProject(cid, req.body.project_id);
+    if (prj.error) return res.status(400).json(prj);
 
     // Filter out holiday + week-off dates for this user
     let skippedCount = 0;
@@ -633,8 +655,8 @@ app.post('/api/tasks/bulk-checklist', requireAuth, async (req, res) => {
       }
     } catch (e) { console.error('bulk-checklist holiday filter err:', e.message); }
 
-    const values = dates.map(date => [desc, parseInt(assignedTo), req.session.userId, date, 'pending', priority||'low', remarks||'', cid]);
-    await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id) VALUES ?`, [values]);
+    const values = dates.map(date => [desc, parseInt(assignedTo), req.session.userId, date, 'pending', priority||'low', remarks||'', cid, prj.projectId]);
+    await db.query(`INSERT INTO checklist_tasks (description,assigned_to,assigned_by,due_date,status,priority,remarks,client_id,project_id) VALUES ?`, [values]);
     res.json({ success: true, count: dates.length, skipped: skippedCount });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -882,7 +904,8 @@ app.get('/api/tasks/:id/detail', requireAuth, async (req, res) => {
   try {
     const { type } = req.query;
     const table = getTable(type||'delegation');
-    const [rows] = await db.query(`SELECT t.*,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date FROM ${table} t WHERE t.id=?`, [req.params.id]);
+    const [rows] = await db.query(`SELECT t.*,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date, p.name AS project_name, p.is_active AS project_active
+      FROM ${table} t LEFT JOIN client_projects p ON p.id=t.project_id WHERE t.id=?`, [req.params.id]);
     if (!rows[0]) return res.status(404).json({ error: 'Task not found' });
     // Admin/HOD see anything; otherwise only the assigner can pull a task's detail (needed for self-edit).
     const role = req.session.role;
@@ -929,7 +952,21 @@ app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
     // that can move a deadline and, like the other three, it left no trace —
     // "my due date changed by itself" had no answer.
     const [[before]] = await db.query(
-      `SELECT DATE_FORMAT(due_date,'%Y-%m-%d') AS due_date FROM ${table} WHERE id=?`, [req.params.id]);
+      `SELECT DATE_FORMAT(due_date,'%Y-%m-%d') AS due_date, client_id, project_id FROM ${table} WHERE id=?`, [req.params.id]);
+    // Project: a task that stays with the same client keeps the project it has
+    // (even one archived since) when that is what comes back, or when the
+    // caller sends no project_id at all (the old modal). Otherwise the same
+    // rule as creating: a client with active projects needs one of them.
+    let projectId;
+    const keepsOld = before && before.project_id && Number(before.client_id) === Number(cid)
+      && (req.body.project_id === undefined || Number(req.body.project_id) === Number(before.project_id));
+    if (keepsOld) projectId = before.project_id;
+    else if (req.body.project_id === undefined && before && Number(before.client_id) === Number(cid)) projectId = before.project_id || null;
+    else {
+      const prj = await resolveTaskProject(cid, req.body.project_id);
+      if (prj.error) return res.status(400).json(prj);
+      projectId = prj.projectId;
+    }
     const logDateChange = () => {
       const from = before?.due_date || null;
       const to = date || null;
@@ -953,11 +990,11 @@ app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
       // leaves the date blank must not silently declare it settled.
       const setsDueDate = !!(date && String(date).trim());
       await db.query(
-        `UPDATE ${table} SET description=?,due_date=?,due_time=?,priority=?,approval=?,remarks=?,url=?,client_id=?`
+        `UPDATE ${table} SET description=?,due_date=?,due_time=?,priority=?,approval=?,remarks=?,url=?,client_id=?,project_id=?`
         + (setsDueDate ? ',awaiting_due_date=0' : '') + ` WHERE id=?`,
-        [desc, date, dueTime, priority||'low', approval||'no', remarks||'', url||null, cid, req.params.id]);
+        [desc, date, dueTime, priority||'low', approval||'no', remarks||'', url||null, cid, projectId, req.params.id]);
     }
-    else await db.query(`UPDATE ${table} SET description=?,due_date=?,remarks=?,client_id=? WHERE id=?`, [desc, date, remarks||'', cid, req.params.id]);
+    else await db.query(`UPDATE ${table} SET description=?,due_date=?,remarks=?,client_id=?,project_id=? WHERE id=?`, [desc, date, remarks||'', cid, projectId, req.params.id]);
     logDateChange();
     res.json({ success: true });
   } catch (err) { res.status(500).json({ error: err.message }); }

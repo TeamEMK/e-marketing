@@ -744,6 +744,77 @@ app.put('/api/clients/:id/handlers', requireAuth, requireClientsEditor, async (r
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// ── Projects of a client (ERP, Google Sheet…) ─────────────────────────────
+// Read by the task forms and both client dashboards; kept by whoever keeps the
+// client's operational data (requireClientEditor: admin, hod, pc or one of the
+// client's handlers). A project is archived, never deleted, so a task keeps the
+// project it was given. Names are unique per client, case-insensitively.
+const PROJECT_NAME_MAX = 150;
+const cleanProjectName = v => String(v || '').replace(/\s+/g, ' ').trim();
+
+// Active projects, for pickers; ?all=1 adds archived ones (Client Master).
+// A client login reads only its own client's.
+app.get('/api/clients/:id/projects', requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10) || 0;
+    if (req.session.role === 'client') {
+      const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
+      if (!u || Number(u.client_id) !== id) return res.status(403).json({ error: 'Forbidden' });
+    }
+    const all = req.query.all === '1';
+    const [rows] = await db.query(
+      `SELECT p.id, p.name, p.is_active,
+              (SELECT COUNT(*) FROM delegation_tasks d WHERE d.project_id=p.id)
+            + (SELECT COUNT(*) FROM checklist_tasks k WHERE k.project_id=p.id) AS task_count
+         FROM client_projects p
+        WHERE p.client_id=? ${all ? '' : 'AND p.is_active=1'}
+        ORDER BY p.is_active DESC, p.name`, [id]);
+    res.json(rows.map(r => ({ id: r.id, name: r.name, is_active: !!r.is_active, task_count: Number(r.task_count) || 0 })));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Add a project. A name that was archived before comes back instead of a twin.
+app.post('/api/clients/:id/projects', requireAuth, requireClientEditor, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10) || 0;
+    const name = cleanProjectName(req.body && req.body.name);
+    if (!name) return res.status(400).json({ error: 'Enter a project name.' });
+    if (name.length > PROJECT_NAME_MAX) return res.status(400).json({ error: `A project name can be at most ${PROJECT_NAME_MAX} characters.` });
+    const [[c]] = await db.query('SELECT id FROM clients WHERE id=?', [id]);
+    if (!c) return res.status(404).json({ error: 'Client not found' });
+    const [[dup]] = await db.query('SELECT id, is_active FROM client_projects WHERE client_id=? AND LOWER(name)=LOWER(?)', [id, name]);
+    if (dup && dup.is_active) return res.status(400).json({ error: `This client already has a project named "${name}".` });
+    if (dup) {
+      await db.query('UPDATE client_projects SET is_active=1, name=? WHERE id=?', [name, dup.id]);
+      return res.json({ success: true, id: dup.id, restored: true });
+    }
+    const [ins] = await db.query('INSERT INTO client_projects (client_id, name, created_by) VALUES (?,?,?)', [id, name, req.session.userId]);
+    res.json({ success: true, id: ins.insertId });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Rename a project, or archive / restore it. Body: { name?, is_active? }.
+app.put('/api/clients/:id/projects/:pid', requireAuth, requireClientEditor, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10) || 0;
+    const pid = parseInt(req.params.pid, 10) || 0;
+    const [[p]] = await db.query('SELECT id, name, is_active FROM client_projects WHERE id=? AND client_id=?', [pid, id]);
+    if (!p) return res.status(404).json({ error: 'Project not found' });
+    const body = req.body || {};
+    let name = p.name;
+    if (body.name !== undefined) {
+      name = cleanProjectName(body.name);
+      if (!name) return res.status(400).json({ error: 'Enter a project name.' });
+      if (name.length > PROJECT_NAME_MAX) return res.status(400).json({ error: `A project name can be at most ${PROJECT_NAME_MAX} characters.` });
+      const [[dup]] = await db.query('SELECT id FROM client_projects WHERE client_id=? AND LOWER(name)=LOWER(?) AND id<>?', [id, name, pid]);
+      if (dup) return res.status(400).json({ error: `This client already has a project named "${name}".` });
+    }
+    const active = body.is_active === undefined ? !!p.is_active : !!body.is_active;
+    await db.query('UPDATE client_projects SET name=?, is_active=? WHERE id=?', [name, active ? 1 : 0, pid]);
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Deleting a client: admins, or Client Master at the "Admin" level in Access
 // Control (admin_clients) — userCanDo says yes to every admin. The credential
 // vault below stays requireAdmin; it holds client passwords.

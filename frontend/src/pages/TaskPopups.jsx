@@ -23,11 +23,49 @@
 //   newtask — the tasks given to me while I was away, from notify.js (ntShow;
 //             both buttons go through ntDismiss)
 import { useEffect, useLayoutEffect, useRef, useState } from 'react';
-import { legacy, css, fmtDate } from '../lib/app.js';
+import { legacy, css, fmtDate, api } from '../lib/app.js';
 import Modal from '../components/Modal.jsx';
 import SearchSelect from '../components/SearchSelect.jsx';
 
 const errBox = msg => <div className="alert error" ref={css(msg ? 'display: block;' : 'display:none')}>{msg}</div>;
+
+// The chosen client's active projects (Client Master → Projects). Returns
+// [project, setProject, projects]: projects is null while loading or with no
+// client, else the list. A client with exactly one project has it picked; a
+// project that is not the new client's is let go. keep ({ client, value,
+// label }): a project a task already has, offered while that client is chosen
+// even if it has been archived since (Edit Task).
+function useClientProjects(client, initial = '', keep = null) {
+  const [project, setProject] = useState(initial ? String(initial) : '');
+  const [projects, setProjects] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setProjects(null);
+    if (!client) { setProject(''); return; }
+    api(`/api/clients/${client}/projects`).then(r => {
+      if (!live) return;
+      const list = Array.isArray(r) ? r.map(p => ({ value: String(p.id), label: p.name })) : [];
+      if (keep && keep.value && String(keep.client) === String(client) && !list.some(p => p.value === String(keep.value))) {
+        list.push({ value: String(keep.value), label: keep.label });
+      }
+      setProjects(list);
+      setProject(cur => (list.some(p => p.value === cur) ? cur : list.length === 1 ? list[0].value : ''));
+    });
+    return () => { live = false; };
+  }, [client]);
+  return [project, setProject, projects];
+}
+
+// Shown only for a client that has projects; then it is required.
+function ProjectField({ project, setProject, projects }) {
+  if (!projects || !projects.length) return null;
+  return (
+    <div className="form-group">
+      <label>Project <span ref={css('color:#dc2626')}>*</span></label>
+      <SearchSelect value={project} onChange={setProject} placeholder="— Select Project —" options={[{ value: '', label: '— Select Project —' }, ...projects]} />
+    </div>
+  );
+}
 const TEXTAREA = "min-height:70px;width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:vertical";
 
 function ReviseBody({ d, close }) {
@@ -131,9 +169,12 @@ function EditBody({ d, close }) {
   });
   const [err, setErr] = useState('');
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
+  // The task's own project stays on offer for its client, archived or not.
+  const [project, setProject, projects] = useClientProjects(f.client, t.project_id || '',
+    t.project_id ? { client: t.client_id, value: t.project_id, label: t.project_name + (t.project_active ? '' : ' (archived)') } : null);
   const save = async () => {
     setErr('');
-    const msg = await legacy('taskEditSend', String(d.id), d.type, f, close);
+    const msg = await legacy('taskEditSend', String(d.id), d.type, { ...f, project, needProject: !!(projects && projects.length) }, close);
     if (msg) setErr(msg);
   };
   const shown = displayed('', isDeleg ? 'block' : 'none');
@@ -168,6 +209,7 @@ function EditBody({ d, close }) {
         <SearchSelect value={f.client} onChange={v => set('client', v)} placeholder="— No Client —"
           options={[{ value: '', label: '— No Client —' }, ...d.clients]} />
       </div>
+      <ProjectField project={project} setProject={setProject} projects={projects} />
       <div className="form-group">
         <label>Remarks</label>
         <input type="text" placeholder="Remarks..." value={f.remarks} onChange={e => set('remarks', e.target.value)} />
@@ -306,10 +348,11 @@ function ChecklistBody({ d, close }) {
   const [busy, setBusy] = useState(false);
   const file = useRef(null);
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
+  const [project, setProject, projects] = useClientProjects(f.client);
   const preview = legacy('taskChecklistPreview', f.freq, f.date, f.endDate, f.desc);
   const generate = async () => {
     setErr(''); setOk('');
-    const msg = await legacy('taskChecklistSend', f, setBusy, setOk, close);
+    const msg = await legacy('taskChecklistSend', { ...f, project, needProject: !!(projects && projects.length) }, setBusy, setOk, close);
     if (msg) setErr(msg);
   };
   return (
@@ -345,6 +388,7 @@ function ChecklistBody({ d, close }) {
         <SearchSelect value={f.client} onChange={v => set('client', v)} placeholder="Select Client"
           options={[{ value: '', label: 'Select Client' }, ...d.clients]} />
       </div>
+      <ProjectField project={project} setProject={setProject} projects={projects} />
 
       <div className="form-group">
         <label>Task Name / Description</label>
@@ -376,7 +420,7 @@ function ChecklistBody({ d, close }) {
           <button className="btn btn-green btn-sm" onClick={() => legacy('taskChecklistCsvSend', file.current.files[0], close)}>⬆ Upload CSV</button>
           <button className="btn btn-outline btn-sm" onClick={() => legacy('downloadSampleC')}>⬇ Sample</button>
         </div>
-        <div ref={css('font-size:11px;color:#94a3b8;margin-top:6px')}>Format: user_email, frequency (daily/weekly/monthly/yearly/quarterly/alternative_week), start_date, description, remarks, client_name (required, must match an existing client) — tasks auto-generate!</div>
+        <div ref={css('font-size:11px;color:#94a3b8;margin-top:6px')}>Format: user_email, frequency (daily/weekly/monthly/yearly/quarterly/alternative_week), start_date, description, remarks, client_name (required, must match an existing client), project (required for a client that has projects) — tasks auto-generate!</div>
       </div>
     </>
   );
@@ -402,6 +446,7 @@ function DelegateBody({ d, close }) {
   const [approval, setApproval] = useState('no');
   const [approver, setApprover] = useState('');
   const [client, setClient] = useState(has(d.clients, d.prefill.clientId) ? String(d.prefill.clientId) : '');
+  const [project, setProject, projects] = useClientProjects(client);
   const [url, setUrl] = useState('');
   const [remarks, setRemarks] = useState('');
   const [cards, setCards] = useState(() => [newCard(d.today)]);
@@ -456,7 +501,7 @@ function DelegateBody({ d, close }) {
   const assign = async () => {
     setErr('');
     const keys = cards.map(c => c.key);
-    const msg = await legacy('taskDelegateSend', { doer, approval, approver, client, url, remarks }, cards, {
+    const msg = await legacy('taskDelegateSend', { doer, approval, approver, client, project, needProject: !!(projects && projects.length), url, remarks }, cards, {
       busy: setBusy,
       landed: idx => { const gone = new Set(idx.map(i => keys[i])); setCards(cs => cs.filter(c => !gone.has(c.key))); },
       close,
@@ -502,6 +547,7 @@ function DelegateBody({ d, close }) {
         <label>Client <span ref={css('color:#dc2626')}>*</span></label>
         <SearchSelect value={client} onChange={setClient} placeholder="— Select Client —" options={[{ value: '', label: '— Select Client —' }, ...d.clients]} />
       </div>
+      <ProjectField project={project} setProject={setProject} projects={projects} />
       {cards.map((c, i) => (
         <div data-task-row="" key={c.key} ref={css(CARD)}>
           <div ref={css('display:flex;align-items:center;justify-content:space-between;height:18px')}>
@@ -559,7 +605,7 @@ function DelegateBody({ d, close }) {
             ? <button key="cancel" className="btn btn-outline btn-sm" ref={css('border-color:#dc2626;color:#dc2626')} onClick={() => legacy('taskCsvCancel')}>✕ Cancel</button>
             : <button key="sample" className="btn btn-outline btn-sm" onClick={() => legacy('downloadSample')}>⬇ Sample</button>}
         </div>
-        <div ref={css('font-size:11px;color:#94a3b8;margin-top:6px')}>Columns: doer_email, approver_email, due_date, priority, approval, description, remarks, client_name — matched by header name, so any order works and only doer_email, due_date and description are required. Dates as YYYY-MM-DD or MM/DD/YYYY.</div>
+        <div ref={css('font-size:11px;color:#94a3b8;margin-top:6px')}>Columns: doer_email, approver_email, due_date, priority, approval, description, remarks, client_name, project, status — matched by header name, so any order works and only doer_email, due_date and description are required (project too, for a client that has projects). Dates as YYYY-MM-DD or MM/DD/YYYY.</div>
       </div>
     </>
   );

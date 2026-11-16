@@ -297,6 +297,91 @@ export function CmDetLinks() {
   );
 }
 
+// ── Projects ──
+// The client's projects (ERP, Google Sheet…), from /api/clients/:id/projects.
+// Once a client has an active project, every task for it names one. Whoever
+// keeps the client's operational data (ops) adds, renames and archives them;
+// an archived project leaves the pickers but stays on the tasks that have it.
+const PRJ_IN = 'padding:7px 10px;border:1.5px solid #e2e8f0;border-radius:7px;font-size:13px;outline:none;font-family:inherit';
+const PRJ_BTN = 'padding:5px 11px;font-size:12px';
+export function CmDetProjects() {
+  const [d] = useState(() => legacy('cmDetData', 'cmdetprojects') || {});
+  const [list, setList] = useState(null);
+  const [name, setName] = useState('');
+  const [busy, setBusy] = useState(false);
+  const [edit, setEdit] = useState(null);   // { id, name } while renaming
+  const load = async () => {
+    const r = await api(`/api/clients/${d.id}/projects?all=1`);
+    setList(Array.isArray(r) ? r : []);
+  };
+  useEffect(() => { if (d.id) load(); }, [d.id]);
+  const add = async () => {
+    const v = name.trim();
+    if (!v || busy) return;
+    setBusy(true);
+    const r = await api(`/api/clients/${d.id}/projects`, 'POST', { name: v });
+    setBusy(false);
+    if (!r || r.error) { toast((r && r.error) || 'Could not add the project', 'error'); return; }
+    toast(r.restored ? `Project "${v}" restored` : `Project "${v}" added`);
+    setName('');
+    load();
+  };
+  const save = async (p, body, done) => {
+    const r = await api(`/api/clients/${d.id}/projects/${p.id}`, 'PUT', body);
+    if (!r || r.error) { toast((r && r.error) || 'Could not save the project', 'error'); return; }
+    toast(done);
+    setEdit(null);
+    load();
+  };
+  const active = (list || []).filter(p => p.is_active);
+  return (
+    <div className="task-table-card" id="cmProjectsCard" ref={css('padding:14px 18px;margin-top:16px')}>
+      <div ref={css('display:flex;justify-content:space-between;align-items:center;margin-bottom:10px;flex-wrap:wrap;gap:8px')}>
+        <div className="card-head-title">📁 Projects <span ref={css(SUB)}>— every task for this client names one</span></div>
+        {d.ops ? (
+          <div ref={css('display:flex;gap:6px')}>
+            <input type="text" value={name} maxLength={150} placeholder="e.g. ERP, Google Sheet" onChange={e => setName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') add(); }} ref={css(PRJ_IN + ';width:220px')} />
+            <button className="btn btn-primary" disabled={busy || !name.trim()} onClick={add} ref={css(PRJ_BTN)}>{busy ? 'Adding…' : '＋ Add'}</button>
+          </div>
+        ) : null}
+      </div>
+      {list === null ? <div ref={css('color:#94a3b8;font-size:12px;padding:8px 2px')}>Loading…</div>
+        : !list.length ? <div ref={css('color:#94a3b8;font-size:12px;padding:8px 2px')}>
+            No projects yet.{d.ops ? ' Add this client\'s projects (e.g. ERP, Google Sheet). Once it has one, every new task for this client must pick a project.' : ''}
+          </div>
+        : <div>
+            {list.map(p => (
+              <div key={p.id} ref={css('display:flex;align-items:center;gap:10px;padding:8px 2px;border-top:1px solid #f1f5f9' + (p.is_active ? '' : ';opacity:.6'))}>
+                {edit && edit.id === p.id
+                  ? <>
+                      <input type="text" value={edit.name} maxLength={150} autoFocus onChange={e => setEdit({ ...edit, name: e.target.value })}
+                        onKeyDown={e => { if (e.key === 'Enter') save(p, { name: edit.name }, 'Project renamed'); if (e.key === 'Escape') setEdit(null); }}
+                        ref={css(PRJ_IN + ';flex:1')} />
+                      <button className="btn btn-primary" ref={css(PRJ_BTN)} onClick={() => save(p, { name: edit.name }, 'Project renamed')}>Save</button>
+                      <button className="btn btn-outline" ref={css(PRJ_BTN)} onClick={() => setEdit(null)}>Cancel</button>
+                    </>
+                  : <>
+                      <span ref={css('flex:1;font-weight:600;color:#1e293b')}>{p.name}
+                        {!p.is_active ? <span ref={css('margin-left:8px;font-size:11px;font-weight:600;color:#64748b;background:#f1f5f9;padding:1px 7px;border-radius:8px')}>Archived</span> : null}
+                      </span>
+                      <span ref={css('font-size:12px;color:#94a3b8')}>{p.task_count} task{p.task_count === 1 ? '' : 's'}</span>
+                      {d.ops ? <>
+                        <button className="btn btn-outline" ref={css(PRJ_BTN)} onClick={() => setEdit({ id: p.id, name: p.name })}>Rename</button>
+                        {p.is_active
+                          ? <button className="btn btn-outline" ref={css(PRJ_BTN + ';color:#b45309;border-color:#fcd34d')} title="Hide from the task forms; tasks keep it"
+                              onClick={() => save(p, { is_active: false }, `"${p.name}" archived`)}>Archive</button>
+                          : <button className="btn btn-outline" ref={css(PRJ_BTN)} onClick={() => save(p, { is_active: true }, `"${p.name}" restored`)}>Restore</button>}
+                      </> : null}
+                    </>}
+              </div>
+            ))}
+            {!active.length ? <div ref={css('color:#94a3b8;font-size:12px;padding:6px 2px')}>All projects are archived, so tasks for this client do not need a project.</div> : null}
+          </div>}
+    </div>
+  );
+}
+
 // ── Documents (Google Drive) ──
 // The department last looked at, kept from one client to the next as the old
 // DMS_STATE did: opening another client with the same folder shows it first.

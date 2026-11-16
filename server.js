@@ -4974,6 +4974,23 @@ const _clientsTableMigrationsPromise = (async () => {
   ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
   // Seed from existing handler_id values so old data is preserved.
   await sa(`INSERT IGNORE INTO client_handlers (client_id, user_id) SELECT id, handler_id FROM clients WHERE handler_id IS NOT NULL`);
+  // Projects of a client (ERP, Google Sheet…), kept in Client Master. A task for
+  // a client that has active projects names one of them in project_id. A
+  // project is archived (is_active=0), never deleted, so old tasks keep theirs.
+  await sa(`CREATE TABLE IF NOT EXISTS client_projects (
+    id INT AUTO_INCREMENT PRIMARY KEY,
+    client_id INT NOT NULL,
+    name VARCHAR(150) NOT NULL,
+    is_active TINYINT(1) NOT NULL DEFAULT 1,
+    created_by INT DEFAULT NULL,
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    UNIQUE KEY uq_client_project (client_id, name),
+    KEY idx_cp_client (client_id)
+  ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`);
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN project_id INT DEFAULT NULL AFTER client_id`);
+  await sa(`ALTER TABLE delegation_tasks ADD INDEX idx_dt_project (project_id)`);
+  await sa(`ALTER TABLE checklist_tasks ADD COLUMN project_id INT DEFAULT NULL AFTER client_id`);
+  await sa(`ALTER TABLE checklist_tasks ADD INDEX idx_ct_project (project_id)`);
   // Client feedback submitted via the client portal.
   await sa(`CREATE TABLE IF NOT EXISTS client_feedback (
     id INT AUTO_INCREMENT PRIMARY KEY,
@@ -7899,6 +7916,18 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
       clientTasks,
       viewerId
     });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// The portal's client's active projects (Client Master → Projects), for the
+// portal's new-task form: a client that has projects names one on every task.
+app.get('/api/client-portal/projects', requireAuth, async (req, res) => {
+  try {
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+    const [rows] = await db.query(
+      'SELECT id, name FROM client_projects WHERE client_id=? AND is_active=1 ORDER BY name', [resolved.id]);
+    res.json(rows);
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
