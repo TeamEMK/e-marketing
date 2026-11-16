@@ -796,6 +796,48 @@ app.post('/api/clients/:id/projects', requireAuth, requireClientEditor, async (r
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Many projects at once: the Projects card's comma list and Client Master's
+// "Upload Projects" CSV. Body: { rows: [{ client_id | client_name, name }] }, at
+// most 2000. client_name matches a client's name or brand name, case and spaces
+// ignored. Per row, the same right as adding one (admin, hod, pc or a handler of
+// that client). A name the client already has is "already there", an archived
+// one comes back. Answer: { added, restored, existing, problems: [{ row, error }] }
+// where row is the 1-based position in `rows`.
+app.post('/api/client-projects/bulk', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role === 'client') return res.status(403).json({ error: 'Forbidden' });
+    const rows = Array.isArray(req.body && req.body.rows) ? req.body.rows : null;
+    if (!rows || !rows.length) return res.status(400).json({ error: 'No rows to add.' });
+    if (rows.length > 2000) return res.status(400).json({ error: 'At most 2000 rows at a time.' });
+    const [clients] = await db.query('SELECT id, name, brand_name, handler_id FROM clients');
+    const key = s => String(s || '').toLowerCase().replace(/\s+/g, '');
+    const byId = new Map(clients.map(c => [Number(c.id), c]));
+    const byName = new Map();
+    clients.forEach(c => { [c.name, c.brand_name].forEach(n => { if (n && !byName.has(key(n))) byName.set(key(n), c); }); });
+    const manager = ['admin', 'hod', 'pc'].includes(req.session.role);
+    const mayEdit = new Map();   // client id → allowed
+    const out = { added: 0, restored: 0, existing: 0, problems: [] };
+    for (let i = 0; i < rows.length; i++) {
+      const r = rows[i] || {};
+      const c = r.client_id != null && r.client_id !== '' ? byId.get(Number(r.client_id)) : byName.get(key(r.client_name));
+      const name = cleanProjectName(r.name);
+      const problem = !c ? (r.client_id != null && r.client_id !== '' ? 'client not found' : `no client named "${r.client_name || ''}"`)
+        : !name ? 'no project name'
+        : name.length > PROJECT_NAME_MAX ? `project name over ${PROJECT_NAME_MAX} characters`
+        : '';
+      if (problem) { out.problems.push({ row: i + 1, error: problem }); continue; }
+      if (!mayEdit.has(c.id)) mayEdit.set(c.id, manager || await isHandlerOf(req.session.userId, c));
+      if (!mayEdit.get(c.id)) { out.problems.push({ row: i + 1, error: `you cannot change "${c.name}"'s projects` }); continue; }
+      const [[dup]] = await db.query('SELECT id, is_active FROM client_projects WHERE client_id=? AND LOWER(name)=LOWER(?)', [c.id, name]);
+      if (dup && dup.is_active) { out.existing++; continue; }
+      if (dup) { await db.query('UPDATE client_projects SET is_active=1, name=? WHERE id=?', [name, dup.id]); out.restored++; continue; }
+      await db.query('INSERT INTO client_projects (client_id, name, created_by) VALUES (?,?,?)', [c.id, name, req.session.userId]);
+      out.added++;
+    }
+    res.json(out);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Rename a project, or archive / restore it. Body: { name?, is_active? }.
 app.put('/api/clients/:id/projects/:pid', requireAuth, requireClientEditor, async (req, res) => {
   try {

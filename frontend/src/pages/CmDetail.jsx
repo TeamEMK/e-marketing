@@ -561,14 +561,17 @@ export function CmDetProjects() {
     setList(Array.isArray(r) ? r : []);
   };
   useEffect(() => { if (d.id) load(); }, [d.id]);
+  // Several at once, comma-separated ("ERP, Google Sheet, Website").
   const add = async () => {
-    const v = name.trim();
-    if (!v || busy) return;
+    const names = [...new Set(name.split(',').map(s => s.replace(/\s+/g, ' ').trim()).filter(Boolean))];
+    if (!names.length || busy) return;
     setBusy(true);
-    const r = await api(`/api/clients/${d.id}/projects`, 'POST', { name: v });
+    const r = await api('/api/client-projects/bulk', 'POST', { rows: names.map(n => ({ client_id: d.id, name: n })) });
     setBusy(false);
     if (!r || r.error) { toast((r && r.error) || 'Could not add the project', 'error'); return; }
-    toast(r.restored ? `Project "${v}" restored` : `Project "${v}" added`);
+    const said = [r.added && `${r.added} added`, r.restored && `${r.restored} restored`, r.existing && `${r.existing} already there`].filter(Boolean);
+    if (r.problems && r.problems.length) toast(`${said.join(' · ') || 'Nothing added'} · ${r.problems.map(p => `"${names[p.row - 1]}": ${p.error}`).join('; ')}`, 'error');
+    else toast(names.length === 1 ? (r.restored ? `Project "${names[0]}" restored` : r.existing ? `"${names[0]}" is already there` : `Project "${names[0]}" added`) : said.join(' · '));
     setName('');
     load();
   };
@@ -586,8 +589,8 @@ export function CmDetProjects() {
         <div className="card-head-title">📁 Projects <span ref={css(SUB)}>— every task for this client names one</span></div>
         {d.ops ? (
           <div ref={css('display:flex;gap:6px')}>
-            <input type="text" value={name} maxLength={150} placeholder="e.g. ERP, Google Sheet" onChange={e => setName(e.target.value)}
-              onKeyDown={e => { if (e.key === 'Enter') add(); }} ref={css(PRJ_IN + ';width:220px')} />
+            <input type="text" value={name} maxLength={1000} placeholder="e.g. ERP, Google Sheet — commas add several" onChange={e => setName(e.target.value)}
+              onKeyDown={e => { if (e.key === 'Enter') add(); }} ref={css(PRJ_IN + ';width:280px')} />
             <button className="btn btn-primary" disabled={busy || !name.trim()} onClick={add} ref={css(PRJ_BTN)}>{busy ? 'Adding…' : '＋ Add'}</button>
           </div>
         ) : null}
