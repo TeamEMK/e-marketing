@@ -3,7 +3,7 @@
 // renderManpurTasksBtn / renderBaCredentialsBtn put in front of it).
 // dashboard.js hands over which ones show through dashBtnsSetReact
 //   { holidays, checklist, delegate, transfer, manpur: url | null, ba, ai: url | null }
-// Order: AI Dashboard (admins), BA Credentials, Manpur Tasks, Holidays, Checklist, Delegate, Transfer.
+// Order: AI Dashboard (everyone), BA Credentials, Manpur Tasks, Holidays, Checklist, Delegate, Transfer.
 // amber-ui.js still moves #dashBtns into the top bar and shows / hides it.
 import { useEffect, useState } from 'react';
 import { legacy, css } from '../lib/app.js';

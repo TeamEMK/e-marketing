@@ -237,11 +237,11 @@ async function loadDashboard(light = false) {
   // React (DashBtns.jsx) gets which ones show; the two person-specific buttons
   // are wiped here as the innerHTML below wipes them, and put back just after.
   _dashTabsReact({});   // mounts the type tabs (React) on the first load; no-op after
-  // ai: the AI Master Dashboard link (AI_DASHBOARD_URL), for admins only.
+  // ai: the AI Master Dashboard link (AI_DASHBOARD_URL), for everyone.
   if (!_dashBtnsReact({ holidays: ME.role === 'admin', checklist: canDo('create_checklist'), delegate: canDo('create_task'),
-                        transfer: canDo('transfer_task'), manpur: null, ba: false, ai: ME.role === 'admin' ? AI_DASHBOARD_URL : null })) {
+                        transfer: canDo('transfer_task'), manpur: null, ba: false, ai: AI_DASHBOARD_URL })) {
     const btns = [];
-    if (ME.role === 'admin') btns.push(`<button class="btn dash-btn-quiet" style="background:#0f172a;color:#fff" title="Opens the AI Master Dashboard in a new tab" onclick="window.open('${AI_DASHBOARD_URL}', '_blank', 'noopener')">🤖 AI Dashboard</button>`);
+    btns.push(`<button class="btn dash-btn-quiet" style="background:#0f172a;color:#fff" title="Opens the AI Master Dashboard in a new tab" onclick="window.open('${AI_DASHBOARD_URL}', '_blank', 'noopener')">🤖 AI Dashboard</button>`);
     // dash-btn-quiet: css/amber.css draws these as outline buttons, leaving
     // Delegate the one filled button.
     if (ME.role === 'admin') btns.push(`<button class="btn btn-yellow dash-btn-quiet" onclick="openHoliday()"><span class="amb-hide">🗓 </span><svg class="amb-only amb-btn-ico" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="4.5" width="18" height="16.5" rx="3"/><path d="M8 2.5v4M16 2.5v4M3 10h18"/></svg>Holidays</button>`);
@@ -308,7 +308,7 @@ async function loadDashboard(light = false) {
 const BOTTOM_RANK_MIN_PEOPLE = 4;
 
 // The AI Master Dashboard (a separate app). Its button on the Dashboard is shown
-// to admins only and opens it in a new tab; the site itself is not behind our login.
+// to everyone and opens it in a new tab; the site itself is not behind our login.
 const AI_DASHBOARD_URL = 'https://ai-master-dashboard.vercel.app/';
 
 // Hod's "My Team" choice, remembered per browser.
