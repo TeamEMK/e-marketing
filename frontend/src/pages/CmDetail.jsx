@@ -225,7 +225,7 @@ export function DelaysCard({ delays }) {
 export const OPEN_STATES = [
   ['overdue', 'Overdue', '#b91c1c', '#fee2e2'], ['today', 'Due today', '#b45309', '#fef3c7'],
   ['client', 'Waiting on the client', '#6d28d9', '#ede9fe'], ['approval', 'Waiting for approval', '#0369a1', '#e0f2fe'],
-  ['revised', 'Revision asked', '#9d174d', '#fce7f3'], ['nodate', 'Due date not set', '#475569', '#f1f5f9'],
+  ['revised', 'Date revised', '#9d174d', '#fce7f3'], ['nodate', 'Due date not set', '#475569', '#f1f5f9'],
   ['upcoming', 'Upcoming', '#15803d', '#dcfce7'],
 ];
 const OPEN_SHOWN = 100;

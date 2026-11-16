@@ -201,7 +201,7 @@ function cpTogglePin(){const on=!document.documentElement.classList.contains('cp
     <div class="alert error" id="cpDelErr" style="display:none"></div>
     <div class="form-group">
       <label id="cpDelHandlerLabel">Handler (auto-assigned)</label>
-      <select id="cpDelHandler" style="color:#475569;font-weight:600"></select>
+      <select id="cpDelHandler" style="color:#475569;font-weight:600" onchange="cpLoadProjects()"></select>
       <!-- Shown instead of the select when there is only one name to pick. -->
       <div id="cpDelHandlerName" style="display:none;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:9px;font-size:13px;color:#475569;font-weight:600;background:#f8fafc"></div>
     </div>
@@ -736,7 +736,7 @@ function cpRenderProjectsHtml(projects){
 const CP_OPEN_STATES = [
   ['overdue', 'Overdue', '#b91c1c', '#fee2e2'], ['today', 'Due today', '#b45309', '#fef3c7'],
   ['client', 'Waiting on the client', '#6d28d9', '#ede9fe'], ['approval', 'Waiting for approval', '#0369a1', '#e0f2fe'],
-  ['revised', 'Revision asked', '#9d174d', '#fce7f3'], ['nodate', 'Due date not set', '#475569', '#f1f5f9'],
+  ['revised', 'Date revised', '#9d174d', '#fce7f3'], ['nodate', 'Due date not set', '#475569', '#f1f5f9'],
   ['upcoming', 'Upcoming', '#15803d', '#dcfce7'],
 ];
 function cpRenderOpenStatusHtml(rows){
@@ -1218,18 +1218,26 @@ function cpDelDoerChange(){
   } else {
     cpHandlerOptions();
   }
+  cpLoadProjects();
 }
 
-// The new-task form's Project list: this client's active projects. With none
-// the row stays hidden and no project is sent; with one, it is picked.
+// The new-task form's Project list: this client's active projects, for the task's
+// doer (the chosen handler, or the client in a staff preview's "client does it").
+// Empty — none, or Client Master → ⚙️ Project Rules says the doer's department
+// needs none — keeps the row hidden and no project is sent; one is picked.
+// Run again when the doer changes; only the latest answer is used.
+let _cpPrjSeq = 0;
 async function cpLoadProjects(){
   const row = document.getElementById('cpDelProjectRow');
   const sel = document.getElementById('cpDelProject');
+  const seq = ++_cpPrjSeq;
   row.style.display = 'none';
   sel.innerHTML = '';
+  const toClient = CP_IS_PREVIEW && document.getElementById('cpDelDoer')?.value === 'client';
+  const doer = toClient ? _cpMe.portal_user_id : (parseInt(document.getElementById('cpDelHandler').value) || _cpMe.handler_id);
   try {
-    const list = await api(cpUrl('/api/client-portal/projects'));
-    if (!Array.isArray(list) || !list.length) return;
+    const list = await api(cpUrl('/api/client-portal/projects', doer ? { doer } : null));
+    if (seq !== _cpPrjSeq || !Array.isArray(list) || !list.length) return;
     sel.innerHTML = (list.length > 1 ? '<option value="">— Select Project —</option>' : '') +
       list.map(p => `<option value="${p.id}">${dtEscape(p.name)}</option>`).join('');
     row.style.display = 'block';
@@ -1257,7 +1265,6 @@ function cpOpenDelegate(){
   document.getElementById('cpDelDesc').value = '';
   document.getElementById('cpDelRemarks').value = '';
   document.getElementById('cpDelPriority').value = 'low';
-  cpLoadProjects();
   // Same form either way; only the wording says who is assigning to whom.
   document.getElementById('cpDelTitle').textContent = CP_IS_PREVIEW
     ? `＋ Assign Task for ${_cpMe.name || 'this client'}`
@@ -1269,6 +1276,7 @@ function cpOpenDelegate(){
     document.getElementById('cpDelHandlerLabel').textContent =
       (Array.isArray(_cpMe.handlers) && _cpMe.handlers.length > 1) ? 'Handler (pick one)' : 'Handler (auto-assigned)';
     cpHandlerOptions();
+    cpLoadProjects();
     document.getElementById('cpDelDueRow').style.display  = 'none';
     document.getElementById('cpDelDueHint').style.display = 'block';
   }

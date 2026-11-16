@@ -34,15 +34,17 @@ const errBox = msg => <div className="alert error" ref={css(msg ? 'display: bloc
 // client, else the list. A client with exactly one project has it picked; a
 // project that is not the new client's is let go. keep ({ client, value,
 // label }): a project a task already has, offered while that client is chosen
-// even if it has been archived since (Edit Task).
-function useClientProjects(client, initial = '', keep = null) {
+// even if it has been archived since (Edit Task). doer: the task's doer — when
+// Client Master → ⚙️ Project Rules says their department needs no project, the
+// list comes back empty and the field is not shown.
+function useClientProjects(client, initial = '', keep = null, doer = '') {
   const [project, setProject] = useState(initial ? String(initial) : '');
   const [projects, setProjects] = useState(null);
   useEffect(() => {
     let live = true;
     setProjects(null);
     if (!client) { setProject(''); return; }
-    api(`/api/clients/${client}/projects`).then(r => {
+    api(`/api/clients/${client}/projects${doer ? `?doer=${encodeURIComponent(doer)}` : ''}`).then(r => {
       if (!live) return;
       const list = Array.isArray(r) ? r.map(p => ({ value: String(p.id), label: p.name })) : [];
       if (keep && keep.value && String(keep.client) === String(client) && !list.some(p => p.value === String(keep.value))) {
@@ -52,7 +54,7 @@ function useClientProjects(client, initial = '', keep = null) {
       setProject(cur => (list.some(p => p.value === cur) ? cur : list.length === 1 ? list[0].value : ''));
     });
     return () => { live = false; };
-  }, [client]);
+  }, [client, doer]);
   return [project, setProject, projects];
 }
 
@@ -171,7 +173,8 @@ function EditBody({ d, close }) {
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
   // The task's own project stays on offer for its client, archived or not.
   const [project, setProject, projects] = useClientProjects(f.client, t.project_id || '',
-    t.project_id ? { client: t.client_id, value: t.project_id, label: t.project_name + (t.project_active ? '' : ' (archived)') } : null);
+    t.project_id ? { client: t.client_id, value: t.project_id, label: t.project_name + (t.project_active ? '' : ' (archived)') } : null,
+    t.assigned_to ? String(t.assigned_to) : '');
   const save = async () => {
     setErr('');
     const msg = await legacy('taskEditSend', String(d.id), d.type, { ...f, project, needProject: !!(projects && projects.length) }, close);
@@ -348,7 +351,7 @@ function ChecklistBody({ d, close }) {
   const [busy, setBusy] = useState(false);
   const file = useRef(null);
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
-  const [project, setProject, projects] = useClientProjects(f.client);
+  const [project, setProject, projects] = useClientProjects(f.client, '', null, f.doer);
   const preview = legacy('taskChecklistPreview', f.freq, f.date, f.endDate, f.desc);
   const generate = async () => {
     setErr(''); setOk('');
@@ -446,7 +449,7 @@ function DelegateBody({ d, close }) {
   const [approval, setApproval] = useState('no');
   const [approver, setApprover] = useState('');
   const [client, setClient] = useState(has(d.clients, d.prefill.clientId) ? String(d.prefill.clientId) : '');
-  const [project, setProject, projects] = useClientProjects(client);
+  const [project, setProject, projects] = useClientProjects(client, '', null, doer);
   const [url, setUrl] = useState('');
   const [remarks, setRemarks] = useState('');
   const [cards, setCards] = useState(() => [newCard(d.today)]);

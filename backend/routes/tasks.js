@@ -242,7 +242,7 @@ app.post('/api/tasks', requireAuth, async (req, res) => {
         doerIsClient = true;
       }
     }
-    const prj = await resolveTaskProject(enforcedClientId, req.body.project_id);
+    const prj = await resolveTaskProject(enforcedClientId, req.body.project_id, targetUser);
     if (prj.error) return res.status(400).json(prj);
     const projectId = prj.projectId;
     // The CSV bulk upload only, for a row marked done: a record of work that already
@@ -614,7 +614,9 @@ app.post('/api/tasks/notify-batch', requireAuth, async (req, res) => {
 // task with no client has none. Returns { projectId } or the 400 body
 // { error, needProject? }. (The WhatsApp-bot approvals in server.js insert
 // without one: they have no project to give.)
-async function resolveTaskProject(clientId, rawProjectId) {
+// doerId: the task's doer. Once Client Master → ⚙️ Project Rules names departments,
+// a project is required only for a doer in one of them (see project-stats.js).
+async function resolveTaskProject(clientId, rawProjectId, doerId) {
   const raw = parseInt(rawProjectId, 10);
   const asked = Number.isFinite(raw) && raw > 0 ? raw : null;
   if (!clientId) return asked ? { error: 'A project needs a client' } : { projectId: null };
@@ -623,7 +625,9 @@ async function resolveTaskProject(clientId, rawProjectId) {
     return projects.some(p => Number(p.id) === asked)
       ? { projectId: asked } : { error: 'That project is not one of this client\'s projects' };
   }
-  return projects.length ? { error: 'Pick a project for this client', needProject: true } : { projectId: null };
+  if (!projects.length) return { projectId: null };
+  return (await require('../project-stats').doerNeedsProject(db, doerId))
+    ? { error: 'Pick a project for this client', needProject: true } : { projectId: null };
 }
 
 app.post('/api/tasks/bulk-checklist', requireAuth, async (req, res) => {
@@ -638,7 +642,7 @@ app.post('/api/tasks/bulk-checklist', requireAuth, async (req, res) => {
     if (!Array.isArray(dates) || dates.length > 800) return res.status(400).json({ error: 'Too many dates in one go' });
     const cidRaw = client_id != null ? client_id : clientId;
     const cid = (() => { const n = parseInt(cidRaw, 10); return Number.isFinite(n) && n > 0 ? n : null; })();
-    const prj = await resolveTaskProject(cid, req.body.project_id);
+    const prj = await resolveTaskProject(cid, req.body.project_id, assignedTo);
     if (prj.error) return res.status(400).json(prj);
 
     // Filter out holiday + week-off dates for this user
@@ -952,7 +956,7 @@ app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
     // that can move a deadline and, like the other three, it left no trace —
     // "my due date changed by itself" had no answer.
     const [[before]] = await db.query(
-      `SELECT DATE_FORMAT(due_date,'%Y-%m-%d') AS due_date, client_id, project_id FROM ${table} WHERE id=?`, [req.params.id]);
+      `SELECT DATE_FORMAT(due_date,'%Y-%m-%d') AS due_date, client_id, project_id, assigned_to FROM ${table} WHERE id=?`, [req.params.id]);
     // Project: a task that stays with the same client keeps the project it has
     // (even one archived since) when that is what comes back, or when the
     // caller sends no project_id at all (the old modal). Otherwise the same
@@ -963,7 +967,7 @@ app.put('/api/tasks/:id/edit', requireAuth, async (req, res) => {
     if (keepsOld) projectId = before.project_id;
     else if (req.body.project_id === undefined && before && Number(before.client_id) === Number(cid)) projectId = before.project_id || null;
     else {
-      const prj = await resolveTaskProject(cid, req.body.project_id);
+      const prj = await resolveTaskProject(cid, req.body.project_id, before && before.assigned_to);
       if (prj.error) return res.status(400).json(prj);
       projectId = prj.projectId;
     }

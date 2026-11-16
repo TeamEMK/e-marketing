@@ -767,7 +767,39 @@ async function addDefaultProjects(clientId, userId) {
   } catch (e) { console.error('default projects for client', clientId, 'failed:', e.message); }
 }
 
+// Client Master → ⚙️ Project Rules: which doers' tasks need a project
+// (project-stats.js projectDepartments). GET for any staff: { departments: the
+// chosen ones ([] = all), options: every department users carry }. PUT is admin
+// only: { departments: [names] }. Outside /api/clients/ so it is never a client :id.
+app.get('/api/project-settings', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role === 'client') return res.status(403).json({ error: 'Forbidden' });
+    const [rows] = await db.query(
+      `SELECT DISTINCT TRIM(department) AS d FROM users
+        WHERE role <> 'client' AND department IS NOT NULL AND TRIM(department) <> '' ORDER BY d`);
+    res.json({ departments: await projectBreakdown.projectDepartments(db), options: rows.map(r => r.d) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.put('/api/project-settings', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const list = Array.isArray(req.body && req.body.departments) ? req.body.departments : null;
+    if (!list) return res.status(400).json({ error: 'departments must be a list' });
+    // Tidied and de-duplicated ignoring case (the match is case-insensitive too).
+    const seen = new Set(), clean = [];
+    for (const s of list) {
+      const d = String(s || '').replace(/\s+/g, ' ').trim();
+      if (d && !seen.has(d.toLowerCase())) { seen.add(d.toLowerCase()); clean.push(d); }
+    }
+    clean.splice(100);
+    await db.query(`INSERT INTO app_settings (key_name, value) VALUES ('project_departments', ?)
+      ON DUPLICATE KEY UPDATE value=VALUES(value)`, [JSON.stringify(clean)]);
+    res.json({ success: true, departments: clean });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Active projects, for pickers; ?all=1 adds archived ones (Client Master).
+// ?doer=<user id> (the task forms): [] when that doer's tasks do not need a
+// project under ⚙️ Project Rules, so the form shows no Project field.
 // A client login reads only its own client's.
 app.get('/api/clients/:id/projects', requireAuth, async (req, res) => {
   try {
@@ -776,6 +808,7 @@ app.get('/api/clients/:id/projects', requireAuth, async (req, res) => {
       const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
       if (!u || Number(u.client_id) !== id) return res.status(403).json({ error: 'Forbidden' });
     }
+    if (req.query.doer && !(await projectBreakdown.doerNeedsProject(db, req.query.doer))) return res.json([]);
     const all = req.query.all === '1';
     const [rows] = await db.query(
       `SELECT p.id, p.name, p.is_active,

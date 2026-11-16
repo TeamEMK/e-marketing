@@ -7936,6 +7936,8 @@ app.get('/api/client-portal/projects', requireAuth, async (req, res) => {
   try {
     const resolved = await resolvePortalClientId(req);
     if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+    // ?doer=<user id>: [] when that doer's tasks do not need a project (⚙️ Project Rules).
+    if (req.query.doer && !(await require('./backend/project-stats').doerNeedsProject(db, req.query.doer))) return res.json([]);
     const [rows] = await db.query(
       'SELECT id, name FROM client_projects WHERE client_id=? AND is_active=1 ORDER BY name', [resolved.id]);
     res.json(rows);

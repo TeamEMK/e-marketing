@@ -13,14 +13,41 @@ module.exports.projectTasks = projectTasks;
 module.exports.delayReport = delayReport;
 module.exports.delaysByClient = delaysByClient;
 module.exports.openTaskStatus = openTaskStatus;
+module.exports.projectDepartments = projectDepartments;
+module.exports.doerNeedsProject = doerNeedsProject;
+
+// Which doers' tasks need a project (Client Master → ⚙️ Project Rules, admin):
+// app_settings 'project_departments' = JSON list of department names. Empty
+// (the default) = every department, as before the setting existed. Otherwise a
+// task for a client with projects needs one only when its doer is in one of
+// these departments; for anyone else the Project field is not shown at all.
+async function projectDepartments(db) {
+  try {
+    const [[r]] = await db.query("SELECT value FROM app_settings WHERE key_name='project_departments'");
+    const list = JSON.parse((r && r.value) || '[]');
+    return Array.isArray(list) ? list.map(s => String(s || '').trim()).filter(Boolean) : [];
+  } catch { return []; }
+}
+// Does a task for this doer need a project? No doer known → yes (the safe side).
+// A doer outside the listed departments (a client login has none) → no.
+async function doerNeedsProject(db, doerId) {
+  const depts = await projectDepartments(db);
+  if (!depts.length) return true;
+  const id = parseInt(doerId, 10);
+  if (!Number.isFinite(id) || id <= 0) return true;
+  const [[u]] = await db.query('SELECT department FROM users WHERE id=?', [id]);
+  const d = String((u && u.department) || '').trim().toLowerCase();
+  return !!d && depts.some(x => x.toLowerCase() === d);
+}
 
 // Where each open task of a client stands right now (not limited to a window):
 // every delegation task still pending or revised, and checklist tasks pending and
 // due today or earlier (a recurring checklist's future dates are not news).
 // Row: { id, type, description, project, doer, due_date, due_time, state, state_label,
 // days, note, sub_done, sub_total, last_comment: { text, by, at } | null }.
-// state, first that applies: approval (waiting for approval), revised (revision
-// asked), nodate (doer has not set the date; note = their reason), client (waiting
+// state, first that applies: approval (waiting for approval), revised (its due date
+// was pushed and the new one is today or later; past it, overdue with note "Due date
+// was revised"), nodate (doer has not set the date; note = their reason), client (waiting
 // on the client; note = what is needed), overdue (days past due), today, upcoming
 // (days left). Ordered: overdue (most days first), today, client, approval,
 // revised, nodate, then upcoming by date. At most 500.
@@ -64,7 +91,11 @@ async function openTaskStatus(db, clientId) {
     const d = r.days_to_due == null ? null : Number(r.days_to_due);
     let state, label, note = null, days = null;
     if (Number(r.waiting_approval)) { state = 'approval'; label = 'Waiting for approval'; }
-    else if (r.status === 'revised') { state = 'revised'; label = 'Revision asked'; }
+    // 'revised' is a due date that was pushed (Revise, approved by the assigner, or
+    // straight away on a client's task): still open, on its new date. Past that
+    // date it is overdue like any other task.
+    else if (r.status === 'revised' && r.due_date && d < 0) { state = 'overdue'; days = -d; label = `Overdue by ${-d} day${d === -1 ? '' : 's'}`; note = 'Due date was revised'; }
+    else if (r.status === 'revised' && r.due_date) { state = 'revised'; days = d; label = d === 0 ? 'Date revised · due today' : `Date revised · due in ${d} day${d === 1 ? '' : 's'}`; }
     else if (Number(r.awaiting_due_date) || !r.due_date) { state = 'nodate'; label = 'Due date not set yet'; note = r.no_due_date_reason || null; }
     else if (r.client_ask) { state = 'client'; label = 'Waiting on the client'; note = r.client_ask + (r.client_ask_by ? ` (by ${r.client_ask_by.split('-').reverse().join('-')})` : ''); }
     else if (d < 0) { state = 'overdue'; days = -d; label = `Overdue by ${-d} day${d === -1 ? '' : 's'}`; }
@@ -99,7 +130,7 @@ async function delaysByClient(db, from, to, scope) {
        FROM delegation_tasks t JOIN clients c ON c.id=t.client_id LEFT JOIN users u ON u.id=t.assigned_to
       WHERE t.due_date BETWEEN ? AND ?${sc}
         AND ((t.status='completed' AND t.completed_at IS NOT NULL AND DATE(t.completed_at) > t.due_date)
-          OR (t.status='pending' AND t.due_date < CURDATE()))
+          OR (t.status IN ('pending','revised') AND t.due_date < CURDATE()))
      UNION ALL
      SELECT c.id, COALESCE(NULLIF(TRIM(c.brand_name),''), c.name), t.assigned_to, COALESCE(u.name,'—'), t.status,
             DATEDIFF(CURDATE(), t.due_date)
@@ -130,7 +161,8 @@ async function delaysByClient(db, from, to, scope) {
 // Delays for one client, in the same window (tasks whose due date is in [from, to]):
 //   done late  — delegation completed on a day after its due date: days = done − due
 //                (checklist keeps no completion date, so it cannot be late this way);
-//   still open — pending past its due date (the cards' overdue): days = today − due.
+//   still open — pending past its due date, or revised (date pushed) past its new
+//                date: days = today − due.
 // Returns { members, tasks }. tasks: { id, type, description, doer, doer_id, project,
 // due_date, done_on, status, days_late, reason (delegation delay_reason) }, most days
 // first, at most 1000. members: per doer { doer_id, name, late, open, done_late,
@@ -146,7 +178,7 @@ async function delayReport(db, clientId, from, to) {
        FROM delegation_tasks t LEFT JOIN users u ON u.id=t.assigned_to LEFT JOIN client_projects p ON p.id=t.project_id
       WHERE t.client_id=? AND t.due_date BETWEEN ? AND ?
         AND ((t.status='completed' AND t.completed_at IS NOT NULL AND DATE(t.completed_at) > t.due_date)
-          OR (t.status='pending' AND t.due_date < CURDATE()))
+          OR (t.status IN ('pending','revised') AND t.due_date < CURDATE()))
      UNION ALL
      SELECT t.id, 'checklist', t.description, t.status, t.assigned_to,
             COALESCE(u.name,'—'), p.name,

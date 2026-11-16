@@ -5,7 +5,7 @@
 // cmBarSubscribe; a filter change goes back through cmSetF, which redraws the
 // list. The buttons run clients.js's own functions.
 import { useEffect, useRef, useState } from 'react';
-import { legacy, css, api } from '../lib/app.js';
+import { legacy, css, api, me, toast } from '../lib/app.js';
 import SearchSelect from '../components/SearchSelect.jsx';
 
 // ── 📁 Upload Projects ──
@@ -32,6 +32,54 @@ function parseCsv(text) {
   return rows.map(r => r.map(c => c.trim())).filter(r => r.some(Boolean));
 }
 const PROJECTS_SAMPLE = 'client_name,project\nAmbraee,"ERP, Google Sheet"\nSohan Health Care,Website\nSohan Health Care,Meta Ads\n';
+// ── ⚙️ Project Rules (admin) ──
+// Which doers' tasks need a project: tick departments; none ticked = every
+// department (GET / PUT /api/project-settings). A doer outside them gets no
+// Project field in any task form, and the server asks them for none.
+function ProjectRules() {
+  const [data, setData] = useState(null);
+  const [picked, setPicked] = useState(new Set());
+  const [busy, setBusy] = useState(false);
+  useEffect(() => {
+    api('/api/project-settings').then(r => {
+      setData(r);
+      if (r && Array.isArray(r.departments)) setPicked(new Set(r.departments.map(d => d.toLowerCase())));
+    });
+  }, []);
+  if (!data) return <div className="cm-bulk" ref={css('display:block')}>Loading…</div>;
+  if (data.error) return <div className="cm-bulk" ref={css('display:block;color:#dc2626')}>{data.error}</div>;
+  const toggle = d => setPicked(s => { const n = new Set(s); const k = d.toLowerCase(); if (n.has(k)) n.delete(k); else n.add(k); return n; });
+  const save = async () => {
+    setBusy(true);
+    const departments = data.options.filter(d => picked.has(d.toLowerCase()));
+    const r = await api('/api/project-settings', 'PUT', { departments });
+    setBusy(false);
+    if (!r || r.error) { toast((r && r.error) || 'Could not save', 'error'); return; }
+    toast(departments.length ? `Projects needed only for: ${departments.join(', ')}` : 'Projects needed for every department');
+  };
+  return (
+    <div className="cm-bulk" id="cmProjectRules" ref={css('display:block')}>
+      <div className="cm-bulk-head">
+        <div>
+          <div className="cm-bulk-head-text">⚙️ Project Rules</div>
+          <div className="cm-bulk-head-sub">A task for a client with projects asks for a project only when its doer is in a ticked department. Nothing ticked = every department.</div>
+        </div>
+        <button className="cm-btn-primary" ref={css('padding:8px 14px;font-size:12px')} disabled={busy} onClick={save}>{busy ? 'Saving…' : '💾 Save'}</button>
+      </div>
+      <div ref={css('display:flex;flex-wrap:wrap;gap:8px 18px;margin-top:6px')}>
+        {data.options.map(d => (
+          <label key={d} ref={css('display:flex;align-items:center;gap:6px;font-size:13px;color:#334155;cursor:pointer')}>
+            <input type="checkbox" checked={picked.has(d.toLowerCase())} onChange={() => toggle(d)} ref={css('width:auto;margin:0')} />{d}
+          </label>
+        ))}
+      </div>
+      <div ref={css('margin-top:8px;font-size:12px;color:#64748b')}>
+        {picked.size ? `Now: only ${data.options.filter(d => picked.has(d.toLowerCase())).join(', ')}` : 'Now: every department'}
+      </div>
+    </div>
+  );
+}
+
 // The panel, under the toolbar like the client Bulk Upload one; its button sits in the toolbar row.
 function ProjectsUpload() {
   const [busy, setBusy] = useState(false);
@@ -141,6 +189,7 @@ export function CmToolbar() {
   const bar = useBar();
   const [bulkTouched, setBulkTouched] = useState(false);
   const [prjOpen, setPrjOpen] = useState(false);   // the Upload Projects panel
+  const [rulesOpen, setRulesOpen] = useState(false);   // ⚙️ Project Rules (admin)
   useEffect(() => { if (bar && bar.bulk) setBulkTouched(true); }, [bar && bar.bulk]);
   if (!bar) return null;
   const f = bar.f;
@@ -162,6 +211,8 @@ export function CmToolbar() {
           <button className="cm-btn-primary" id="cmAddBtn" ref={shown(null, bar.show.add)} onClick={() => legacy('cmOpenAddModal')}>+ Add Client</button>
           <button className="cm-btn-ghost" id="cmBulkBtn" ref={shown(null, bar.show.add)} onClick={() => legacy('cmToggleBulk')}>📂 Bulk Upload</button>
           <button className="cm-btn-ghost" id="cmProjectsBtn" onClick={() => setPrjOpen(o => !o)}>📁 Upload Projects</button>
+          {(me() || {}).role === 'admin'
+            ? <button className="cm-btn-ghost" id="cmProjectRulesBtn" onClick={() => setRulesOpen(o => !o)}>⚙️ Project Rules</button> : null}
           <button className="cm-btn-ghost" onClick={() => legacy('cmExportExcel')}>⬇ Excel</button>
           <button className="cm-btn-ghost" id="cmCrmBtn" ref={shown('display:none', bar.show.crm)} onClick={() => legacy('cmOpenCrmTransfer')}>🔀 Transfer CRM</button>
         </div>
@@ -182,6 +233,7 @@ export function CmToolbar() {
         </div>
       </div>
       {prjOpen ? <ProjectsUpload /> : null}
+      {rulesOpen ? <ProjectRules /> : null}
     </>
   );
 }

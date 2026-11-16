@@ -2209,9 +2209,11 @@ async function taskDelegateCsvSend(file, busy, close) {
   (allClients || []).forEach(c => { clientByName[clientKey(c.name)] = c.id; });
   // Each client's active projects, fetched once per client the sheet names.
   const projectsOf = {};
-  const clientProjects = async cid => {
-    if (!projectsOf[cid]) { const r = await api(`/api/clients/${cid}/projects`); projectsOf[cid] = Array.isArray(r) ? r : []; }
-    return projectsOf[cid];
+  // With the doer: [] when their department needs no project (⚙️ Project Rules).
+  const clientProjects = async (cid, doerId) => {
+    const k = cid + '|' + (doerId || '');
+    if (!projectsOf[k]) { const r = await api(`/api/clients/${cid}/projects${doerId ? '?doer=' + doerId : ''}`); projectsOf[k] = Array.isArray(r) ? r : []; }
+    return projectsOf[k];
   };
   const PRIORITIES = ['low', 'medium', 'high', 'urgent'];
   // A row that cannot be read is left out and reported, never saved half-right.
@@ -2248,12 +2250,14 @@ async function taskDelegateCsvSend(file, busy, close) {
     const projectName = get(r, 'project');
     let project_id = null;
     if (client_id) {
+      // A named project is looked up among all of the client's; whether one is
+      // required follows the doer's department (⚙️ Project Rules).
       const plist = await clientProjects(client_id);
       if (projectName) {
         const hit = plist.find(p => clientKey(p.name) === clientKey(projectName));
         if (!hit) { problems.push(`Row ${n + 1}: no project named "${projectName}" for client "${clientName}"`); continue; }
         project_id = hit.id;
-      } else if (plist.length) {
+      } else if ((await clientProjects(client_id, doer.id)).length) {
         problems.push(`Row ${n + 1}: client "${clientName}" needs a project (${plist.map(p => p.name).join(', ')})`);
         continue;
       }
@@ -2344,9 +2348,11 @@ async function taskChecklistCsvSend(file, close) {
   (allClients || []).forEach(c => { clientByName[c.name.toLowerCase().trim()] = c.id; });
   // Each client's active projects, fetched once per client the sheet names.
   const projectsOf = {};
-  const clientProjects = async cid => {
-    if (!projectsOf[cid]) { const r = await api(`/api/clients/${cid}/projects`); projectsOf[cid] = Array.isArray(r) ? r : []; }
-    return projectsOf[cid];
+  // With the doer: [] when their department needs no project (⚙️ Project Rules).
+  const clientProjects = async (cid, doerId) => {
+    const k = cid + '|' + (doerId || '');
+    if (!projectsOf[k]) { const r = await api(`/api/clients/${cid}/projects${doerId ? '?doer=' + doerId : ''}`); projectsOf[k] = Array.isArray(r) ? r : []; }
+    return projectsOf[k];
   };
   const nameKey = s => (s || '').toLowerCase().replace(/\s+/g, '');
   const projectProblems = [];
@@ -2370,13 +2376,15 @@ async function taskChecklistCsvSend(file, close) {
       if (!validFreqs.includes(frequency)) { skipped++; continue; }
       client_id = clientByName[client_name.toLowerCase()];
       if (!client_id) { skipped++; continue; }
-      // project: by name among the client's projects; required when it has some.
+      // project: by name among the client's projects; required when it has some
+      // and the doer's department needs one (⚙️ Project Rules).
       const plist = await clientProjects(client_id);
+      const doerUser = allUsers.find(u => u.email === user_email);
       if (project) {
         const hit = plist.find(p => nameKey(p.name) === nameKey(project));
         if (!hit) { skipped++; projectProblems.push(`Row ${li + 2}: no project named "${project}" for client "${client_name}"`); continue; }
         project_id = hit.id;
-      } else if (plist.length) {
+      } else if ((await clientProjects(client_id, doerUser && doerUser.id)).length) {
         skipped++; projectProblems.push(`Row ${li + 2}: client "${client_name}" needs a project (${plist.map(p => p.name).join(', ')})`); continue;
       }
     } else {

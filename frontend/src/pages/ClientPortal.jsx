@@ -367,18 +367,21 @@ function DelegateBody({ d, close }) {
   const [priority, setPriority] = useState('low');
   const [remarks, setRemarks] = useState('');
   const [err, setErr] = useState('');
-  // This client's projects (Client Master → Projects): required when it has any; one is picked.
+  // This client's projects (Client Master → Projects) for the chosen handler: required
+  // when there are any (⚙️ Project Rules may say that handler's department needs none);
+  // one is picked.
   const [projects, setProjects] = useState([]);
   const [project, setProject] = useState('');
   useEffect(() => {
     let live = true;
-    api('/api/client-portal/projects').then(r => {
+    api(`/api/client-portal/projects${handler ? `?doer=${encodeURIComponent(handler)}` : ''}`).then(r => {
       if (!live || !Array.isArray(r)) return;
-      setProjects(r.map(p => ({ value: String(p.id), label: p.name })));
-      if (r.length === 1) setProject(String(r[0].id));
+      const list = r.map(p => ({ value: String(p.id), label: p.name }));
+      setProjects(list);
+      setProject(cur => (list.some(p => p.value === cur) ? cur : list.length === 1 ? list[0].value : ''));
     });
     return () => { live = false; };
-  }, []);
+  }, [handler]);
   const save = async () => {
     setErr('');
     const text = desc.trim();
