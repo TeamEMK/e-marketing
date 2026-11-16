@@ -5,8 +5,11 @@
 // with the admin's own address as Reply-To so answers reach them.
 //
 // Every send is written to mail_log: who sent it, to whom, CC, subject, how
-// many files, when, and whether it went. All admins see that list; the body is
-// not kept. There is deliberately no route that edits or deletes a log row.
+// many files, when, and whether it went. All admins see that list. Since
+// 2026-11-16 the body (as sent, after cleanHtml) and the attachments' names and
+// sizes are kept too, so any admin can open a sent email from the list; the
+// files themselves are not kept. Rows from before that have no body.
+// There is deliberately no route that edits or deletes a log row.
 const multer = require('multer');
 
 const MAX_TOTAL_BYTES = 4 * 1024 * 1024;   // all attachments together
@@ -31,7 +34,15 @@ module.exports = function registerComposeMailRoutes(app, deps) {
         status VARCHAR(10) NOT NULL DEFAULT 'sent',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
         INDEX idx_mail_log_created (created_at)
-      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(e => { _logTable = null; throw e; });
+      ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`)
+      // Added 2026-11-16 for opening a sent email: its body and its files' names.
+      .then(async () => {
+        const [cols] = await db.query("SHOW COLUMNS FROM mail_log WHERE Field IN ('body_html','attachments')");
+        const have = new Set(cols.map(c => c.Field));
+        if (!have.has('body_html')) await db.query('ALTER TABLE mail_log ADD COLUMN body_html MEDIUMTEXT NULL');
+        if (!have.has('attachments')) await db.query('ALTER TABLE mail_log ADD COLUMN attachments TEXT NULL');
+      })
+      .catch(e => { _logTable = null; throw e; });
     return _logTable;
   }
 
@@ -48,9 +59,10 @@ module.exports = function registerComposeMailRoutes(app, deps) {
     return out;
   }
 
-  // The body comes from the page's editor. It is never shown inside the app,
-  // only mailed; still, anything that runs or loads is taken out first:
-  // scripts, frames, forms, event handlers and javascript:/data: links.
+  // The body comes from the page's editor. Anything that runs or loads is
+  // taken out first: scripts, frames, forms, event handlers and
+  // javascript:/data: links. The app shows the kept copy only inside a
+  // sandboxed frame (ComposeMail.jsx), where nothing can run anyway.
   function cleanHtml(html) {
     return String(html || '')
       .replace(/<script\b[\s\S]*?<\/script\s*>/gi, '')
@@ -101,8 +113,9 @@ module.exports = function registerComposeMailRoutes(app, deps) {
       // Logged whether or not it went, so a failed attempt is visible too.
       await ensureMailLog();
       await db.query(
-        'INSERT INTO mail_log (sent_by, sent_by_name, to_list, cc_list, subject, attachment_count, status) VALUES (?,?,?,?,?,?,?)',
-        [req.session.userId, name, JSON.stringify(to), JSON.stringify(cc), subject, files.length, ok ? 'sent' : 'failed']);
+        'INSERT INTO mail_log (sent_by, sent_by_name, to_list, cc_list, subject, attachment_count, status, body_html, attachments) VALUES (?,?,?,?,?,?,?,?,?)',
+        [req.session.userId, name, JSON.stringify(to), JSON.stringify(cc), subject, files.length, ok ? 'sent' : 'failed',
+          html, JSON.stringify(files.map(f => ({ name: f.originalname, size: f.size })))]);
       if (!ok) return res.status(502).json({ error: 'The email could not be sent. Please try again.' });
       res.json({ success: true });
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -113,16 +126,32 @@ module.exports = function registerComposeMailRoutes(app, deps) {
     res.json({ name: mailFromName });
   });
 
+  const jsonList = s => { try { const a = JSON.parse(s || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
+
   // Newest first, for every admin: who sent what (subject only) to whom, when.
+  // The bodies stay out of the list; has_body says whether one can be opened.
   app.get('/api/compose-mail/log', requireAuth, requireAdmin, async (req, res) => {
     try {
       await ensureMailLog();
       const [rows] = await db.query(
         `SELECT id, sent_by, sent_by_name, to_list, cc_list, subject, attachment_count, status,
-                DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') AS sent_at
+                DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') AS sent_at, (body_html IS NOT NULL) AS has_body
            FROM mail_log ORDER BY id DESC LIMIT 300`);
-      const list = s => { try { const a = JSON.parse(s || '[]'); return Array.isArray(a) ? a : []; } catch (e) { return []; } };
-      res.json(rows.map(r => ({ ...r, to_list: list(r.to_list), cc_list: list(r.cc_list) })));
+      res.json(rows.map(r => ({ ...r, to_list: jsonList(r.to_list), cc_list: jsonList(r.cc_list), has_body: !!r.has_body })));
+    } catch (err) { res.status(500).json({ error: err.message }); }
+  });
+
+  // One sent email, opened from the list: the same details plus its body and
+  // its files' names and sizes. body_html is null for emails sent before it was kept.
+  app.get('/api/compose-mail/log/:id', requireAuth, requireAdmin, async (req, res) => {
+    try {
+      await ensureMailLog();
+      const [[r]] = await db.query(
+        `SELECT id, sent_by, sent_by_name, to_list, cc_list, subject, attachment_count, status,
+                DATE_FORMAT(created_at, '%Y-%m-%d %H:%i') AS sent_at, body_html, attachments
+           FROM mail_log WHERE id=?`, [parseInt(req.params.id, 10) || 0]);
+      if (!r) return res.status(404).json({ error: 'Email not found' });
+      res.json({ ...r, to_list: jsonList(r.to_list), cc_list: jsonList(r.cc_list), attachments: jsonList(r.attachments) });
     } catch (err) { res.status(500).json({ error: err.message }); }
   });
 };

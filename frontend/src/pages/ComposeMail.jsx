@@ -6,8 +6,9 @@
 // 'to', 'cc', 'files' or 'log'. The chips and files components are still
 // exported on their own for the old card, where they mount into its boxes.
 import { useEffect, useRef, useState } from 'react';
-import { legacy, css, fmtDate } from '../lib/app.js';
+import { legacy, css, fmtDate, api } from '../lib/app.js';
 import SearchSelect from '../components/SearchSelect.jsx';
+import Modal from '../components/Modal.jsx';
 
 const SHOWN = 10;   // CE_CHIPS_SHOWN: past this many, the rest fold into "+N more"
 const label = email => legacy('ceLabel', email) ?? email;
@@ -225,31 +226,90 @@ export function CeCard() {
   );
 }
 
-// Every admin sees the log; nothing here can delete it.
+const kb = n => (n >= 1048576 ? (n / 1048576).toFixed(1) + ' MB' : Math.max(1, Math.round((n || 0) / 1024)) + ' KB');
+const whoList = list => (list || []).map((e, i) => <span key={i}>{i ? ', ' : ''}<span title={e}>{label(e)}</span></span>);
+const sentStatus = s => (s === 'sent'
+  ? <span ref={css('color:#16a34a;font-weight:700')}>Sent</span>
+  : <span ref={css('color:#dc2626;font-weight:700')}>Failed</span>);
+
+// The body is shown in a sandboxed frame: no script, form or same-origin access,
+// whatever the HTML holds. Links open in a new tab.
+function MailBody({ html }) {
+  const doc = '<!doctype html><html><head><meta charset="utf-8"><base target="_blank">'
+    + '<style>body{margin:12px 14px;font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.6;background:#fff}'
+    + 'img{max-width:100%}</style></head><body>' + html + '</body></html>';
+  return <iframe title="Email" sandbox="allow-popups allow-popups-to-escape-sandbox" srcDoc={doc}
+    ref={css('width:100%;height:50vh;border:1px solid #e2e8f0;border-radius:8px;background:#fff')} />;
+}
+
+// One sent email, opened from the list.
+function MailView({ id, onClose }) {
+  const [d, setD] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setD(null);
+    if (id) api(`/api/compose-mail/log/${id}`).then(r => { if (live) setD(r || { error: 'Could not open this email.' }); });
+    return () => { live = false; };
+  }, [id]);
+  const line = (k, v) => <div ref={css('display:flex;gap:10px;font-size:13px;margin:3px 0')}><span ref={css('color:#64748b;min-width:52px')}>{k}</span><span>{v}</span></div>;
+  return (
+    <Modal open={!!id} onClose={onClose} style="max-width:820px;width:94vw">
+      {!d ? <div className="empty">Loading…</div>
+        : d.error ? <div className="empty">{d.error}</div>
+        : <>
+            <h3 ref={css('margin:0 0 10px;font-size:17px')}>{d.subject}</h3>
+            {line('From', <b>{d.sent_by_name}</b>)}
+            {line('To', whoList(d.to_list))}
+            {(d.cc_list || []).length ? line('CC', whoList(d.cc_list)) : null}
+            {line('When', `${fmtDate(String(d.sent_at).slice(0, 10))} ${String(d.sent_at).slice(11, 16)}`)}
+            {line('Status', sentStatus(d.status))}
+            {d.attachment_count
+              ? line('Files', (d.attachments || []).length
+                  ? (d.attachments || []).map((f, i) => <span key={i}>{i ? ', ' : ''}📎 {f.name} <span ref={css('color:#94a3b8')}>({kb(f.size)})</span></span>)
+                  : `📎 ${d.attachment_count}`)
+              : null}
+            <div ref={css('margin-top:12px')}>
+              {d.body_html == null
+                ? <div className="empty">The text of this email was not saved. Emails sent before 16-11-2026 keep only the details above.</div>
+                : d.body_html.replace(/<[^>]*>|&nbsp;|\s/g, '')
+                  ? <MailBody html={d.body_html} />
+                  : <div className="empty">This email had no text, only attachments.</div>}
+            </div>
+            {(d.attachments || []).length ? <div ref={css('margin-top:8px;font-size:11px;color:#94a3b8')}>Attached files are not kept in the app, only their names.</div> : null}
+          </>}
+    </Modal>
+  );
+}
+
+// Every admin sees the log; nothing here can delete it. A row opens that email.
 export function CeLog() {
   const view = usePart('log');
+  const [openId, setOpenId] = useState(null);
   if (!view) return null;
   if (view.error) return <div className="empty">{view.error}</div>;
   const rows = view.rows || [];
   if (!rows.length) return <div className="empty">No emails sent from here yet.</div>;
-  const who = list => (list || []).map((e, i) => <span key={i}>{i ? ', ' : ''}<span title={e}>{label(e)}</span></span>);
+  const who = whoList;
   return (
+    <>
+    <MailView id={openId} onClose={() => setOpenId(null)} />
     <table>
       <thead><tr><th>When</th><th>Sent by</th><th>To</th><th>CC</th><th>Subject</th><th>Files</th><th>Status</th></tr></thead>
       <tbody>
         {rows.map((r, i) => (
-          <tr key={r.id || i}>
+          <tr key={r.id || i} onClick={() => setOpenId(r.id)} ref={css('cursor:pointer')} title="Open this email">
             <td ref={css('white-space:nowrap')}>{fmtDate(String(r.sent_at).slice(0, 10))}<br /><span ref={css('color:#94a3b8;font-size:11px')}>{String(r.sent_at).slice(11, 16)}</span></td>
             <td><b>{r.sent_by_name}</b></td>
             <td ref={css('font-size:12px')}>{who(r.to_list)}</td>
             <td ref={css('font-size:12px')}>{(r.cc_list || []).length ? who(r.cc_list) : '—'}</td>
             <td>{r.subject}</td>
             <td ref={css('text-align:center;white-space:nowrap')}>{r.attachment_count ? `📎 ${r.attachment_count}` : '—'}</td>
-            <td>{r.status === 'sent' ? <span ref={css('color:#16a34a;font-weight:700')}>Sent</span> : <span ref={css('color:#dc2626;font-weight:700')}>Failed</span>}</td>
+            <td>{sentStatus(r.status)}</td>
           </tr>
         ))}
       </tbody>
     </table>
+    </>
   );
 }
 
