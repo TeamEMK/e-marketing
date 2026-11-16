@@ -492,6 +492,7 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
     const [r] = await db.query('INSERT INTO clients (name, brand_name, billing_name, kickstart_date, departments, handler_id, added_by) VALUES (?, ?, ?, ?, ?, ?, ?)',
       [name, brandName, seesBilling ? billingName : null, kickstartDate, departments, handlerIds[0] || null, req.session.userId]);
     const newClientId = r.insertId;
+    await addDefaultProjects(newClientId, req.session.userId);
     await ensureMobileColumn().then(() => db.query('UPDATE clients SET mobile_no=? WHERE id=?', [mobile, newClientId])).catch(() => {});
     const platforms = Array.isArray(req.body.platforms)
       ? [...new Set(req.body.platforms.map(p => String(p || '').trim().slice(0, 100)).filter(Boolean))].join('||').slice(0, 1000)
@@ -755,6 +756,17 @@ app.put('/api/clients/:id/handlers', requireAuth, requireClientsEditor, async (r
 const PROJECT_NAME_MAX = 150;
 const cleanProjectName = v => String(v || '').replace(/\s+/g, ' ').trim();
 
+// Every new client starts with these projects (Add Client and the client Bulk
+// Upload); they can be renamed or archived on its page like any other. Never
+// fatal: a client is created even if this fails.
+const DEFAULT_CLIENT_PROJECTS = ['ERP', 'Google Sheets'];
+async function addDefaultProjects(clientId, userId) {
+  try {
+    await db.query('INSERT IGNORE INTO client_projects (client_id, name, created_by) VALUES ?',
+      [DEFAULT_CLIENT_PROJECTS.map(n => [clientId, n, userId || null])]);
+  } catch (e) { console.error('default projects for client', clientId, 'failed:', e.message); }
+}
+
 // Active projects, for pickers; ?all=1 adds archived ones (Client Master).
 // A client login reads only its own client's.
 app.get('/api/clients/:id/projects', requireAuth, async (req, res) => {
@@ -891,7 +903,8 @@ app.post('/api/clients/bulk', requireAuth, requireClientsEditor, async (req, res
     await ensureAddedByColumn();
     for (const name of cleanNames) {
       try {
-        await db.query('INSERT INTO clients (name, added_by) VALUES (?, ?)', [name, req.session.userId]);
+        const [ins] = await db.query('INSERT INTO clients (name, added_by) VALUES (?, ?)', [name, req.session.userId]);
+        await addDefaultProjects(ins.insertId, req.session.userId);
         added++;
       } catch (e) {
         if (e.code === 'ER_DUP_ENTRY') { skipped++; skippedNames.push(name); }

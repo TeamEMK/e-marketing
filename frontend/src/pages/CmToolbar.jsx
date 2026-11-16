@@ -31,7 +31,7 @@ function parseCsv(text) {
   if (cell || row.length) { row.push(cell); rows.push(row); }
   return rows.map(r => r.map(c => c.trim())).filter(r => r.some(Boolean));
 }
-const PROJECTS_SAMPLE = 'client_name,project\nAmbraee,ERP\nAmbraee,Google Sheet\nSohan Health Care,Website\n';
+const PROJECTS_SAMPLE = 'client_name,project\nAmbraee,"ERP, Google Sheet"\nSohan Health Care,Website\nSohan Health Care,Meta Ads\n';
 // The panel, under the toolbar like the client Bulk Upload one; its button sits in the toolbar row.
 function ProjectsUpload() {
   const [busy, setBusy] = useState(false);
@@ -54,12 +54,18 @@ function ProjectsUpload() {
     const pi = hasHead ? head.findIndex(h => h.includes('project')) : 1;
     const data = hasHead ? all.slice(1) : all;
     if (!data.length) { setRes({ error: 'The file has no rows.' }); return; }
+    // A project cell may hold several names, comma-separated ("ERP, Google Sheet"),
+    // as the card's box does; each becomes its own row, remembering its sheet row
+    // (the header is row 1) for the report.
+    const sent = [], sheetRow = [];
+    data.forEach((row, i) => {
+      const names = String(row[pi] || '').split(',').map(s => s.trim()).filter(Boolean);
+      (names.length ? names : ['']).forEach(n => { sent.push({ client_name: row[ci] || '', name: n }); sheetRow.push(i + 1 + (hasHead ? 1 : 0)); });
+    });
     setBusy(true); setRes(null);
-    const r = await api('/api/client-projects/bulk', 'POST', { rows: data.map(row => ({ client_name: row[ci] || '', name: row[pi] || '' })) });
+    const r = await api('/api/client-projects/bulk', 'POST', { rows: sent });
     setBusy(false);
-    // Row numbers as the spreadsheet shows them (the header is row 1).
-    const off = hasHead ? 1 : 0;
-    setRes(r && !r.error ? { ...r, problems: (r.problems || []).map(p => ({ ...p, row: p.row + off })) } : { error: (r && r.error) || 'Upload failed' });
+    setRes(r && !r.error ? { ...r, problems: (r.problems || []).map(p => ({ ...p, row: sheetRow[p.row - 1] })) } : { error: (r && r.error) || 'Upload failed' });
     if (r && !r.error && file.current) file.current.value = '';
   };
   return (
@@ -67,7 +73,7 @@ function ProjectsUpload() {
           <div className="cm-bulk-head">
             <div>
               <div className="cm-bulk-head-text">Upload Projects (CSV)</div>
-              <div className="cm-bulk-head-sub">Columns: client_name, project. One project per row; a client can have many rows. Projects a client already has are skipped.</div>
+              <div className="cm-bulk-head-sub">Columns: client_name, project. Several projects in one cell are fine, comma-separated (ERP, Google Sheet); a client can also have many rows. Projects a client already has are skipped.</div>
             </div>
             <button className="cm-btn-ghost" ref={css('padding:6px 12px;font-size:12px')} onClick={sample}>⬇ Sample</button>
           </div>
@@ -79,7 +85,7 @@ function ProjectsUpload() {
             <div id="cmProjectsResult" ref={css('margin-top:10px;font-size:13px')}>
               {res.error ? <div ref={css('color:#dc2626')}>{res.error}</div> : <>
                 <div ref={css('color:#15803d;font-weight:600')}>{`${res.added} added · ${res.restored} restored · ${res.existing} already there${res.problems.length ? ` · ${res.problems.length} not added` : ''}`}</div>
-                {res.problems.length ? <div ref={css('margin-top:6px;color:#b91c1c;max-height:160px;overflow:auto')}>{res.problems.map(p => <div key={p.row}>{`Row ${p.row}: ${p.error}`}</div>)}</div> : null}
+                {res.problems.length ? <div ref={css('margin-top:6px;color:#b91c1c;max-height:160px;overflow:auto')}>{res.problems.map((p, i) => <div key={i}>{`Row ${p.row}: ${p.error}`}</div>)}</div> : null}
               </>}
             </div>
           ) : null}
