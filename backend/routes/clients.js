@@ -799,7 +799,8 @@ app.put('/api/project-settings', requireAuth, requireAdmin, async (req, res) => 
 
 // Active projects, for pickers; ?all=1 adds archived ones (Client Master).
 // ?doer=<user id> (the task forms): [] when that doer's tasks do not need a
-// project under ⚙️ Project Rules, so the form shows no Project field.
+// project under ⚙️ Project Rules, so the form shows no Project field; ?doer=
+// (empty, no doer chosen yet) is [] too while the rules name any department.
 // A client login reads only its own client's.
 app.get('/api/clients/:id/projects', requireAuth, async (req, res) => {
   try {
@@ -808,7 +809,12 @@ app.get('/api/clients/:id/projects', requireAuth, async (req, res) => {
       const [[u]] = await db.query('SELECT client_id FROM users WHERE id=?', [req.session.userId]);
       if (!u || Number(u.client_id) !== id) return res.status(403).json({ error: 'Forbidden' });
     }
-    if (req.query.doer && !(await projectBreakdown.doerNeedsProject(db, req.query.doer))) return res.json([]);
+    if ('doer' in req.query) {
+      // A task form asking before its doer is chosen (?doer= empty): while Project
+      // Rules name departments, nothing is shown until there is a doer to judge by.
+      if (!req.query.doer) { if ((await projectBreakdown.projectDepartments(db)).length) return res.json([]); }
+      else if (!(await projectBreakdown.doerNeedsProject(db, req.query.doer))) return res.json([]);
+    }
     const all = req.query.all === '1';
     const [rows] = await db.query(
       `SELECT p.id, p.name, p.is_active,

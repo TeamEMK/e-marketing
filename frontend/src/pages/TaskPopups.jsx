@@ -44,7 +44,9 @@ function useClientProjects(client, initial = '', keep = null, doer = '') {
     let live = true;
     setProjects(null);
     if (!client) { setProject(''); return; }
-    api(`/api/clients/${client}/projects${doer ? `?doer=${encodeURIComponent(doer)}` : ''}`).then(r => {
+    // ?doer= always goes, empty until a doer is chosen: with Project Rules set, the
+    // field then waits for the doer instead of showing for everyone.
+    api(`/api/clients/${client}/projects?doer=${encodeURIComponent(doer || '')}`).then(r => {
       if (!live) return;
       const list = Array.isArray(r) ? r.map(p => ({ value: String(p.id), label: p.name })) : [];
       if (keep && keep.value && String(keep.client) === String(client) && !list.some(p => p.value === String(keep.value))) {
