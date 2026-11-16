@@ -1,0 +1,5 @@
+import{r as s,j as c}from"./vendor-DdgGs7Sa.js";import{l as e,c as r}from"./app-DYCEQstd.js";import{u}from"./TabInd-C_s3CnuQ.js";function v(){const[a,l]=s.useState({active:"clients",vault:null}),n=s.useRef(null),i=u();return s.useEffect(()=>(e("cmTabsSetReact",l),()=>e("cmTabsSetReact",null)),[]),s.useLayoutEffect(()=>{n.current&&a.vault!=null&&(n.current.style.display=a.vault?"":"none")}),c.jsxs("div",{className:"tab-group"+i.cls,ref:t=>{r("margin-bottom:18px")(t),i.ref(t)},children:[i.ind,`
+      `,c.jsx("div",{className:"tab"+(a.active==="clients"?" active":""),id:"cmTabClientsBtn",onClick:()=>e("cmTab","clients"),children:"🏢 Clients"}),`
+      `,c.jsx("div",{className:"tab"+(a.active==="delays"?" active":""),id:"cmTabDelaysBtn",onClick:()=>e("cmTab","delays"),children:"⏰ Delays"}),`
+      `,c.jsx("div",{className:"tab"+(a.active==="vault"?" active":""),id:"cmTabVaultBtn",onClick:()=>e("cmTab","vault"),ref:t=>{n.current=t,t&&!t._cm&&(t._cm=!0,t.setAttribute("style","display:none"))},children:"🔑 Credentials Vault"}),`
+    `]})}export{v as default};

@@ -142,6 +142,13 @@ function cmTab(which, el){
   }
   document.getElementById('cmTab-clients').style.display = which === 'clients' ? 'block' : 'none';
   document.getElementById('cmTab-vault').style.display   = which === 'vault'   ? 'block' : 'none';
+  // ⏰ Delays (frontend/src/pages/CmDelays.jsx): late tasks per client; it loads its own data.
+  const delays = document.getElementById('cmTab-delays');
+  if (delays) {
+    delays.style.display = which === 'delays' ? 'block' : 'none';
+    const root = document.getElementById('cmDelaysRoot');
+    if (which === 'delays' && root && !root._mounted) { root._mounted = true; emkReactMount('cmdelays', root); }
+  }
   if (which === 'vault') cvLoad();
 }
 

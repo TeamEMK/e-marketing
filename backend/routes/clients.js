@@ -7,6 +7,9 @@
 // Dependencies are passed in rather than re-required: these must be the SAME
 // instances server.js uses, not fresh copies. db in particular carries the
 // max_user_connections retry wrapper.
+// Task counts per project for the stats route; it is handed db, so it uses the same instance.
+const projectBreakdown = require('../project-stats');
+
 module.exports = function registerClientRoutes(app, deps) {
   const {
     db,
@@ -929,20 +932,22 @@ app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
       `SELECT t.id, 'delegation' AS type, t.description, t.status, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
               u1.name AS doer, COALESCE(u2.name,'—') AS assigner,
-              DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created
+              DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created, p.name AS project
        FROM delegation_tasks t
        JOIN users u1 ON t.assigned_to=u1.id
        LEFT JOIN users u2 ON t.assigned_by=u2.id
+       LEFT JOIN client_projects p ON p.id=t.project_id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
        ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
     const [recentChl] = await db.query(
       `SELECT t.id, 'checklist' AS type, t.description, t.status, t.priority,
               DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,
               u1.name AS doer, COALESCE(u2.name,'—') AS assigner,
-              DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created
+              DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created, p.name AS project
        FROM checklist_tasks t
        JOIN users u1 ON t.assigned_to=u1.id
        LEFT JOIN users u2 ON t.assigned_by=u2.id
+       LEFT JOIN client_projects p ON p.id=t.project_id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
        ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
     const recent = [...recentDel, ...recentChl]
@@ -966,6 +971,12 @@ app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
       const [[k]] = await db.query('SELECT platforms FROM clients WHERE id=?', [id]);
       clientPlatforms = k?.platforms || null;
     } catch {}
+    // Counts per project ([] when the client has none), same window as above,
+    // and who is late on what (per member and per task).
+    const projects = await projectBreakdown(db, id, from, to);
+    const delays = await projectBreakdown.delayReport(db, id, from, to);
+    // Where every open task stands today (not limited to the window).
+    const openStatus = await projectBreakdown.openTaskStatus(db, id);
     res.json({
       client: {
         id: client.id, name: client.name, brand_name: client.brand_name, kickstart_date: kickstartDate, departments: clientDepartments, platforms: clientPlatforms,
@@ -977,8 +988,37 @@ app.get('/api/clients/:id/stats', requireAuth, async (req, res) => {
       login: loginUser ? { provisioned: true, email: loginUser.email } : { provisioned: false },
       range: { from, to },
       delegation: del, checklist: chl, meetings: { ...meet, recent: meetRecent },
-      recent
+      recent, projects, delays, openStatus
     });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// Client Master → ⏰ Delays: late tasks per client in ?from&to, over the clients
+// this person sees on Client Master (clientMasterScope). Outside /api/clients/ so
+// it can never be read as a client :id.
+app.get('/api/client-delays', requireAuth, async (req, res) => {
+  try {
+    if (req.session.role === 'client') return res.status(403).json({ error: 'Forbidden' });
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+    if (!isDate(req.query.from) || !isDate(req.query.to)) return res.status(400).json({ error: 'from and to are required' });
+    await ensureAddedByColumn().catch(() => {});
+    const scope = await clientMasterScope(req);
+    res.json(await projectBreakdown.delaysByClient(db, req.query.from, req.query.to, scope));
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// The tasks behind a number in the stats' By Project table:
+// ?from&to (the same window), project = id | none | all, status = all | pending |
+// overdue | completed | revised. Same access as the stats.
+app.get('/api/clients/:id/project-tasks', requireAuth, async (req, res) => {
+  try {
+    const [[client]] = await db.query('SELECT id, handler_id FROM clients WHERE id=?', [req.params.id]);
+    if (!client) return res.status(404).json({ error: 'Client not found' });
+    if (!(await canOpenClient(req.session, client))) return res.status(403).json({ error: 'Forbidden' });
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+    if (!isDate(req.query.from) || !isDate(req.query.to)) return res.status(400).json({ error: 'from and to are required' });
+    res.json(await projectBreakdown.projectTasks(db, client.id, req.query.from, req.query.to,
+      String(req.query.project || 'all'), String(req.query.status || 'all')));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

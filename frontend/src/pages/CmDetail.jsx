@@ -43,6 +43,248 @@ const PILL = {
 };
 const HEAD = 'padding:14px 16px;border-bottom:1px solid #e2e8f0';
 
+// Tasks per project in the same window as the cards above (stats.projects;
+// shown only for a client that has projects). "No project" holds its older tasks.
+const PRJ_NUM = 'text-align:right;white-space:nowrap;font-variant-numeric:tabular-nums';
+const PRJ_LINK = 'background:none;border:none;padding:0;font:inherit;color:inherit;cursor:pointer;text-decoration:underline;text-decoration-color:rgba(100,116,139,.35);text-underline-offset:3px';
+const STATUS_WORD = { all: 'All tasks', pending: 'Pending', overdue: 'Overdue', completed: 'Completed', revised: 'Revised' };
+export const ProjectTag = ({ name }) => (name
+  ? <div ref={css('margin-top:3px')}><span ref={css('font-size:10px;font-weight:700;color:#7c2d12;background:#ffedd5;padding:1px 7px;border-radius:8px')}>{`📁 ${name}`}</span></div>
+  : null);
+
+// The tasks behind one number: /api/clients/:id/project-tasks for the same window.
+function ProjectTasks({ clientId, range, pick, close }) {
+  const [list, setList] = useState(null);
+  useEffect(() => {
+    let live = true;
+    setList(null);
+    const q = new URLSearchParams({ from: range.from, to: range.to, project: pick.project, status: pick.status });
+    api(`/api/clients/${clientId}/project-tasks?${q}`).then(r => { if (live) setList(r); });
+    return () => { live = false; };
+  }, [pick.project, pick.status]);
+  const today = new Date(Date.now() + 5.5 * 3600e3).toISOString().slice(0, 10);
+  return (
+    <div ref={css('border-top:1px solid #f1f5f9')}>
+      <div ref={css('display:flex;align-items:center;justify-content:space-between;padding:10px 16px;background:#fffbeb')}>
+        <b ref={css('font-size:13px;color:#92400e')}>{`${pick.name} · ${STATUS_WORD[pick.status]}${Array.isArray(list) ? ` · ${list.length} task${list.length === 1 ? '' : 's'}` : ''}`}</b>
+        <button className="btn btn-outline" ref={css('padding:3px 10px;font-size:12px')} onClick={close}>✕ Close</button>
+      </div>
+      {!list ? <div ref={css('padding:14px 16px;color:#94a3b8;font-size:12px')}>Loading…</div>
+        : !Array.isArray(list) ? <div ref={css('padding:14px 16px;color:#dc2626;font-size:12px')}>{list.error || 'Could not load the tasks'}</div>
+        : <div ref={css('overflow-x:auto;max-height:50vh;overflow-y:auto')}>
+            <table ref={css('width:100%;min-width:580px')}>
+              <thead><tr><th>Type</th><th>Task</th><th>Doer</th><th>Due Date</th><th>Done On</th><th>Status</th></tr></thead>
+              <tbody>
+                {list.length ? list.map(t => {
+                  const [badge, label] = TYPE[t.type === 'checklist' ? 'checklist' : 'delegation'];
+                  const [color, word] = STATUS[t.status] || ['#b91c1c', 'Pending'];
+                  const late = t.status === 'pending' && t.due_date && t.due_date < today;
+                  return (
+                    <tr key={t.type + t.id}>
+                      <td><span ref={css(badge)}>{label}</span></td>
+                      <td>{t.description || ''}</td>
+                      <td ref={css('white-space:nowrap')}>{t.doer || '—'}</td>
+                      <td ref={css('white-space:nowrap' + (late ? ';color:#b91c1c;font-weight:700' : ''))}>{t.due_date ? fmtDate(t.due_date) : '—'}</td>
+                      <td ref={css('white-space:nowrap')}>{t.done_on ? fmtDate(t.done_on) : '—'}</td>
+                      <td ref={css('white-space:nowrap')}><span ref={css(`color:${color};font-weight:700;font-size:12px`)}>{word}</span></td>
+                    </tr>
+                  );
+                }) : <tr><td colSpan={6} className="empty" ref={css('padding:20px')}>No tasks</td></tr>}
+              </tbody>
+            </table>
+          </div>}
+    </div>
+  );
+}
+
+export function ProjectsTable({ projects, clientId, range }) {
+  const [pick, setPick] = useState(null);   // { project, status, name } whose tasks are listed
+  if (!projects || !projects.length) return null;
+  // A number above 0 lists its tasks under the table.
+  const cell = (p, status, style) => {
+    const value = status === 'all' ? p.total : p[status];
+    const project = p.id == null ? 'none' : String(p.id);
+    return (
+      <td ref={css(PRJ_NUM + ';' + style)}>
+        {value && clientId && range
+          ? <button type="button" ref={css(PRJ_LINK)} onClick={() => setPick({ project, status, name: p.name })}>{value}</button>
+          : value}
+      </td>
+    );
+  };
+  return (
+    <div className="task-table-card" ref={css('padding:0;margin-bottom:16px')}>
+      <div className="card-head" ref={css(HEAD)}>
+        <div className="card-head-title">📁 By Project</div>
+      </div>
+      <div ref={css('overflow-x:auto')}>
+        <table ref={css('width:100%;min-width:560px')}>
+          <thead><tr><th>Project</th><th ref={css(PRJ_NUM)}>Total</th><th ref={css(PRJ_NUM)}>Pending</th><th ref={css(PRJ_NUM)}>Overdue</th>
+            <th ref={css(PRJ_NUM)}>Completed</th><th ref={css(PRJ_NUM)}>Revised</th><th ref={css('width:160px')}>Done</th></tr></thead>
+          <tbody>
+            {projects.map(p => {
+              const pct = p.total ? Math.round((p.completed / p.total) * 100) : 0;
+              return (
+                <tr key={p.id == null ? 'none' : p.id}>
+                  <td ref={css('font-weight:600;color:' + (p.id == null ? '#94a3b8' : '#1e293b'))}>{p.name}
+                    {p.archived ? <span ref={css('margin-left:6px;font-size:10px;font-weight:600;color:#64748b;background:#f1f5f9;padding:1px 6px;border-radius:8px')}>Archived</span> : null}</td>
+                  {cell(p, 'all', 'font-weight:700')}
+                  {cell(p, 'pending', 'color:#ef4444')}
+                  {cell(p, 'overdue', 'color:' + (p.overdue ? '#b91c1c;font-weight:700' : '#94a3b8'))}
+                  {cell(p, 'completed', 'color:#10b981')}
+                  {cell(p, 'revised', 'color:#f59e0b')}
+                  <td>
+                    <div ref={css('display:flex;align-items:center;gap:8px')}>
+                      <div ref={css('flex:1;height:6px;background:#f1f5f9;border-radius:4px;overflow:hidden')}>
+                        <div ref={css(`width:${pct}%;height:100%;background:#10b981`)} />
+                      </div>
+                      <span ref={css('font-size:11px;color:#64748b;width:32px;text-align:right')}>{p.total ? pct + '%' : '—'}</span>
+                    </div>
+                  </td>
+                </tr>
+              );
+            })}
+          </tbody>
+        </table>
+      </div>
+      {pick ? <ProjectTasks clientId={clientId} range={range} pick={pick} close={() => setPick(null)} /> : null}
+    </div>
+  );
+}
+
+// Who is late on what, in the same window (stats.delays): per member, then per
+// task, most days first. Clicking a member narrows the task list to theirs.
+const DLY_SHOWN = 100;
+const daysWord = n => `${n} day${n === 1 ? '' : 's'}`;
+export function DelaysCard({ delays }) {
+  const [who, setWho] = useState(null);   // doer_id the task list is narrowed to
+  if (!delays) return null;
+  const members = delays.members || [], all = delays.tasks || [];
+  const tasks = who == null ? all : all.filter(t => String(t.doer_id) === String(who));
+  const shown = tasks.slice(0, DLY_SHOWN);
+  return (
+    <div className="task-table-card" ref={css('padding:0;margin-bottom:16px')}>
+      <div className="card-head" ref={css(HEAD + ';display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap')}>
+        <div className="card-head-title">⏰ Delays</div>
+        <span ref={css('font-size:12px;color:#94a3b8')}>Late = done after the due date, or still pending past it</span>
+      </div>
+      {!all.length ? <div className="empty" ref={css('padding:20px')}>No delays in this window 🎉</div> : <>
+        <div ref={css('overflow-x:auto')}>
+          <table ref={css('width:100%;min-width:560px')}>
+            <thead><tr><th>Member</th><th ref={css(PRJ_NUM)}>Late tasks</th><th ref={css(PRJ_NUM)}>Still open</th><th ref={css(PRJ_NUM)}>Done late</th>
+              <th ref={css(PRJ_NUM)}>Total delay</th><th ref={css(PRJ_NUM)}>Longest</th></tr></thead>
+            <tbody>
+              {members.map(m => {
+                const on = who != null && String(who) === String(m.doer_id);
+                return (
+                  <tr key={m.doer_id == null ? 'none' : m.doer_id} onClick={() => setWho(on ? null : m.doer_id)} title={on ? 'Show everyone' : `Show only ${m.name}'s late tasks`}
+                    ref={css('cursor:pointer' + (on ? ';background:#fffbeb' : ''))}>
+                    <td ref={css('font-weight:600;color:#1e293b')}>{m.name}{on ? <span ref={css('margin-left:6px;font-size:11px;color:#b45309')}>● showing</span> : null}</td>
+                    <td ref={css(PRJ_NUM + ';font-weight:700')}>{m.late}</td>
+                    <td ref={css(PRJ_NUM + ';color:' + (m.open ? '#b91c1c;font-weight:700' : '#94a3b8'))}>{m.open}</td>
+                    <td ref={css(PRJ_NUM + ';color:#b45309')}>{m.done_late}</td>
+                    <td ref={css(PRJ_NUM + ';font-weight:700;color:#b91c1c')}>{daysWord(m.total_days)}</td>
+                    <td ref={css(PRJ_NUM + ';color:#64748b')}>{daysWord(m.max_days)}</td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        </div>
+        <div ref={css('display:flex;justify-content:space-between;align-items:center;padding:10px 16px;background:#f8fafc;border-top:1px solid #f1f5f9;border-bottom:1px solid #f1f5f9')}>
+          <b ref={css('font-size:13px;color:#334155')}>{`Late tasks${who != null ? ' · ' + ((members.find(m => String(m.doer_id) === String(who)) || {}).name || '') : ''} · ${tasks.length}`}</b>
+          {who != null ? <button className="btn btn-outline" ref={css('padding:3px 10px;font-size:12px')} onClick={() => setWho(null)}>Show everyone</button> : null}
+        </div>
+        <div ref={css('overflow-x:auto;max-height:55vh;overflow-y:auto')}>
+          <table ref={css('width:100%;min-width:720px')}>
+            <thead><tr><th>Task</th><th>Member</th><th>Due Date</th><th>Done On</th><th ref={css(PRJ_NUM)}>Late by</th><th>Reason</th></tr></thead>
+            <tbody>
+              {shown.map(t => (
+                <tr key={t.type + t.id}>
+                  <td>{t.description || ''}<ProjectTag name={t.project} />
+                    <div ref={css('font-size:10px;color:#94a3b8;margin-top:2px')}>{t.type === 'checklist' ? 'Checklist' : 'Delegation'}</div></td>
+                  <td ref={css('white-space:nowrap')}>{t.doer}</td>
+                  <td ref={css('white-space:nowrap')}>{fmtDate(t.due_date)}</td>
+                  <td ref={css('white-space:nowrap')}>{t.done_on ? fmtDate(t.done_on) : <span ref={css('color:#b91c1c;font-weight:600')}>Still open</span>}</td>
+                  <td ref={css(PRJ_NUM)}><span ref={css('font-size:11px;font-weight:700;color:#b91c1c;background:#fee2e2;padding:2px 8px;border-radius:10px')}>{daysWord(t.days_late)}</span></td>
+                  <td ref={css('font-size:12px;color:#64748b;max-width:260px')}>{t.reason || '—'}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+          {tasks.length > DLY_SHOWN ? <div ref={css('padding:8px 16px;font-size:12px;color:#94a3b8')}>{`Showing the ${DLY_SHOWN} longest of ${tasks.length}.`}</div> : null}
+        </div>
+      </>}
+    </div>
+  );
+}
+
+// Where every open task stands today (stats.openStatus, not limited to the window):
+// one chip per state with its count (click = only those), then the tasks with their
+// state, its note, sub-task progress and the latest comment.
+export const OPEN_STATES = [
+  ['overdue', 'Overdue', '#b91c1c', '#fee2e2'], ['today', 'Due today', '#b45309', '#fef3c7'],
+  ['client', 'Waiting on the client', '#6d28d9', '#ede9fe'], ['approval', 'Waiting for approval', '#0369a1', '#e0f2fe'],
+  ['revised', 'Revision asked', '#9d174d', '#fce7f3'], ['nodate', 'Due date not set', '#475569', '#f1f5f9'],
+  ['upcoming', 'Upcoming', '#15803d', '#dcfce7'],
+];
+const OPEN_SHOWN = 100;
+export function OpenStatusCard({ rows }) {
+  const [only, setOnly] = useState(null);   // state the list is narrowed to
+  if (!rows) return null;
+  const count = k => rows.filter(r => r.state === k).length;
+  const list = only ? rows.filter(r => r.state === only) : rows;
+  const look = k => OPEN_STATES.find(s => s[0] === k) || OPEN_STATES[6];
+  return (
+    <div className="task-table-card" ref={css('padding:0;margin-bottom:16px')}>
+      <div className="card-head" ref={css(HEAD + ';display:flex;justify-content:space-between;align-items:center;gap:8px;flex-wrap:wrap')}>
+        <div className="card-head-title">{`📌 Open Tasks · Current Status`}</div>
+        <span ref={css('font-size:12px;color:#94a3b8')}>{`${rows.length} open today, whatever the date range`}</span>
+      </div>
+      {!rows.length ? <div className="empty" ref={css('padding:20px')}>Nothing open for this client 🎉</div> : <>
+        <div ref={css('display:flex;gap:6px;flex-wrap:wrap;padding:10px 16px;border-bottom:1px solid #f1f5f9')}>
+          <button type="button" className="btn btn-outline" ref={css('padding:4px 10px;font-size:12px' + (only ? '' : ';border-color:#334155;font-weight:700'))} onClick={() => setOnly(null)}>{`All · ${rows.length}`}</button>
+          {OPEN_STATES.filter(([k]) => count(k)).map(([k, label, fg, bg]) => (
+            <button key={k} type="button" onClick={() => setOnly(only === k ? null : k)}
+              ref={css(`padding:4px 10px;font-size:12px;border-radius:999px;border:1.5px solid ${only === k ? fg : 'transparent'};background:${bg};color:${fg};font-weight:700;cursor:pointer`)}>
+              {`${label} · ${count(k)}`}</button>
+          ))}
+        </div>
+        <div ref={css('overflow-x:auto;max-height:60vh;overflow-y:auto')}>
+          <table ref={css('width:100%;min-width:820px')}>
+            <thead><tr><th>Task</th><th>Member</th><th>Due</th><th>Status</th><th>Sub-tasks</th><th>Latest comment</th></tr></thead>
+            <tbody>
+              {list.slice(0, OPEN_SHOWN).map(r => {
+                const [, , fg, bg] = look(r.state);
+                return (
+                  <tr key={r.type + r.id}>
+                    <td>{r.description || ''}<ProjectTag name={r.project} />
+                      <div ref={css('font-size:10px;color:#94a3b8;margin-top:2px')}>{r.type === 'checklist' ? 'Checklist' : 'Delegation'}</div></td>
+                    <td ref={css('white-space:nowrap')}>{r.doer}</td>
+                    <td ref={css('white-space:nowrap')}>{r.due_date ? fmtDate(r.due_date) : '—'}{r.due_time ? <div ref={css('font-size:11px;color:#94a3b8')}>{r.due_time}</div> : null}</td>
+                    <td ref={css('max-width:240px')}>
+                      <span ref={css(`font-size:11px;font-weight:700;color:${fg};background:${bg};padding:2px 8px;border-radius:10px;white-space:nowrap`)}>{r.state_label}</span>
+                      {r.note ? <div ref={css('font-size:11px;color:#64748b;margin-top:3px')}>{r.note}</div> : null}
+                    </td>
+                    <td ref={css('white-space:nowrap;font-size:12px;color:#475569')}>{r.sub_total ? `${r.sub_done} / ${r.sub_total} done` : '—'}</td>
+                    <td ref={css('font-size:12px;color:#334155;max-width:300px')}>
+                      {r.last_comment
+                        ? <>{r.last_comment.text.length > 140 ? r.last_comment.text.slice(0, 140) + '…' : r.last_comment.text}
+                            <div ref={css('font-size:10px;color:#94a3b8;margin-top:2px')}>{`${r.last_comment.by} · ${fmtDate(r.last_comment.at.slice(0, 10))} ${r.last_comment.at.slice(11, 16)}`}</div></>
+                        : <span ref={css('color:#cbd5e1')}>—</span>}
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+          {list.length > OPEN_SHOWN ? <div ref={css('padding:8px 16px;font-size:12px;color:#94a3b8')}>{`Showing ${OPEN_SHOWN} of ${list.length}.`}</div> : null}
+        </div>
+      </>}
+    </div>
+  );
+}
+
 export function CmDetStats() {
   const [s] = useState(() => legacy('cmDetData', 'cmdetstats') || {});
   const del = s.delegation || {}, chl = s.checklist || {}, meet = s.meetings || {};
@@ -60,6 +302,10 @@ export function CmDetStats() {
         <StatCard label="Meetings" value={n(meet.total)} color="#7c3aed" sub={`${n(meet.scheduled)} scheduled · ${n(meet.cancelled)} cancelled`} />
       </div>
 
+      <ProjectsTable projects={s.projects} clientId={s.client && s.client.id} range={s.range} />
+      <OpenStatusCard rows={s.openStatus} />
+      <DelaysCard delays={s.delays} />
+
       <div className="cm-detail-grid" ref={css('display:grid;grid-template-columns:1fr 360px;gap:16px')}>
         <div className="task-table-card" ref={css('padding:0')}>
           <div className="card-head" ref={css(HEAD)}>
@@ -75,7 +321,7 @@ export function CmDetStats() {
                   return (
                     <tr key={i}>
                       <td><span ref={css(badge)}>{label}</span></td>
-                      <td>{t.description || ''}</td>
+                      <td>{t.description || ''}<ProjectTag name={t.project} /></td>
                       <td ref={css('white-space:nowrap')}>{t.doer || '—'}</td>
                       <td ref={css('white-space:nowrap')}>{fmtDate(t.due_date || '')}</td>
                       <td ref={css('white-space:nowrap')}><span ref={css(`color:${color};font-weight:700;font-size:12px`)}>{word}</span></td>

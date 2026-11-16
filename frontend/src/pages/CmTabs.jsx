@@ -1,4 +1,4 @@
-// Client Master → the two tabs (🏢 Clients / 🔑 Credentials Vault), drawn into #cmTabsRoot
+// Client Master → the tabs (🏢 Clients / ⏰ Delays / 🔑 Credentials Vault), drawn into #cmTabsRoot
 // (display:contents, around where the .tab-group sat; React draws the whole group so
 // helpers.js's sliding pill lives in it). clients.js hands over { active, vault } through
 // cmTabsSetReact: cmTab sets active (and still shows / hides the panels, loads the vault),
@@ -20,6 +20,7 @@ export default function CmTabs() {
   return (
     <div className={'tab-group' + ti.cls} ref={el => { css('margin-bottom:18px')(el); ti.ref(el); }}>{ti.ind}{'\n      '}
       <div className={'tab' + (v.active === 'clients' ? ' active' : '')} id="cmTabClientsBtn" onClick={() => legacy('cmTab', 'clients')}>🏢 Clients</div>{'\n      '}
+      <div className={'tab' + (v.active === 'delays' ? ' active' : '')} id="cmTabDelaysBtn" onClick={() => legacy('cmTab', 'delays')}>⏰ Delays</div>{'\n      '}
       <div className={'tab' + (v.active === 'vault' ? ' active' : '')} id="cmTabVaultBtn" onClick={() => legacy('cmTab', 'vault')}
         ref={el => { vault.current = el; if (el && !el._cm) { el._cm = true; el.setAttribute('style', 'display:none'); } }}>🔑 Credentials Vault</div>{'\n    '}
     </div>

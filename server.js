@@ -7834,8 +7834,9 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
               DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created_date,
               TIME_FORMAT(t.created_at,'%H:%i') AS created_time,
               DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS done_date,
-              TIME_FORMAT(t.completed_at,'%H:%i') AS done_time
+              TIME_FORMAT(t.completed_at,'%H:%i') AS done_time, p.name AS project
        FROM delegation_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id
+       LEFT JOIN client_projects p ON p.id=t.project_id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
        ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
     const [recentChl] = await db.query(
@@ -7844,8 +7845,9 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
               COALESCE(u1.name,'— deleted user —') AS doer, DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created,
               DATE_FORMAT(t.created_at,'%Y-%m-%d') AS created_date,
               TIME_FORMAT(t.created_at,'%H:%i') AS created_time,
-              NULL AS done_date, NULL AS done_time, t.assigned_to
+              NULL AS done_date, NULL AS done_time, t.assigned_to, p.name AS project
        FROM checklist_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id
+       LEFT JOIN client_projects p ON p.id=t.project_id
        WHERE t.client_id=? AND DATE(t.created_at) BETWEEN ? AND ?
        ORDER BY t.created_at DESC LIMIT 25`, [id, from, to]);
     await fillDeletedUserNames([...recentDel, ...recentChl], [['assigned_to', 'doer']]);
@@ -7908,13 +7910,22 @@ app.get('/api/client-portal/stats', requireAuth, async (req, res) => {
        FROM delegation_tasks t LEFT JOIN users u ON t.assigned_by=u.id
        WHERE t.assigned_to=? ORDER BY t.status='completed', t.due_date ASC, t.due_time ASC
        LIMIT 100`, [client.portal_user_id]) : [[]];
+    // Counts per project ([] when the client has none), same window as above,
+    // and who is late on what (per member and per task).
+    const projects = await require('./backend/project-stats')(db, id, from, to);
+    const delays = await require('./backend/project-stats').delayReport(db, id, from, to);
+    // Where every open task stands today (not limited to the window).
+    const openStatus = await require('./backend/project-stats').openTaskStatus(db, id);
     res.json({
       client, range: { from, to },
       delegation: del, checklist: chl, meetings: { ...meet, recent: meetRecent },
       recent,
       upcoming,
       clientTasks,
-      viewerId
+      viewerId,
+      projects,
+      delays,
+      openStatus
     });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -7928,6 +7939,19 @@ app.get('/api/client-portal/projects', requireAuth, async (req, res) => {
     const [rows] = await db.query(
       'SELECT id, name FROM client_projects WHERE client_id=? AND is_active=1 ORDER BY name', [resolved.id]);
     res.json(rows);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// The tasks behind a number in the portal's By Project table (same query as
+// Client Master's /api/clients/:id/project-tasks): ?from&to&project&status.
+app.get('/api/client-portal/project-tasks', requireAuth, async (req, res) => {
+  try {
+    const resolved = await resolvePortalClientId(req);
+    if (resolved.error) return res.status(resolved.status).json({ error: resolved.error });
+    const isDate = v => /^\d{4}-\d{2}-\d{2}$/.test(v || '');
+    if (!isDate(req.query.from) || !isDate(req.query.to)) return res.status(400).json({ error: 'from and to are required' });
+    res.json(await require('./backend/project-stats').projectTasks(db, resolved.id, req.query.from, req.query.to,
+      String(req.query.project || 'all'), String(req.query.status || 'all')));
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
