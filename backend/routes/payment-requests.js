@@ -59,6 +59,29 @@ app.post('/api/payment-requests/cards', requireAuth, async (req, res) => {
   } catch(err) { res.status(500).json({ error: err.message }); }
 });
 
+// "Edit approved requests" switch (Payment Request page, admin view): while on,
+// Admins and Payment Request at the "Admin" level can edit an approved or
+// rejected request in full (PUT /api/payment-requests/:id). Off by default; it
+// lives in app_settings 'pr_edit_approved' ('1' = on). Registered before the
+// /:id routes so "settings" is never read as an id.
+async function editApprovedOn() {
+  const [[r]] = await db.query("SELECT value FROM app_settings WHERE key_name='pr_edit_approved'");
+  return !!r && String(r.value) === '1';
+}
+app.get('/api/payment-requests/settings', requireAuth, async (req, res) => {
+  try { res.json({ editApproved: await editApprovedOn() }); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+app.put('/api/payment-requests/settings', requireAuth, async (req, res) => {
+  try {
+    if (!(await userCanDo(req.session, 'admin_paymentreq'))) return res.status(403).json({ error: 'Access denied' });
+    const on = !!(req.body && req.body.editApproved);
+    await db.query(`INSERT INTO app_settings (key_name, value) VALUES ('pr_edit_approved', ?)
+      ON DUPLICATE KEY UPDATE value=VALUES(value)`, [on ? '1' : '0']);
+    res.json({ success: true, editApproved: on });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // DELETE /api/payment-requests/cards/:id — remove card (pr_cards only)
 app.delete('/api/payment-requests/cards/:id', requireAuth, async (req, res) => {
   try {
@@ -297,7 +320,9 @@ app.put('/api/payment-requests/:id', requireAuth, async (req, res) => {
     if (!isOwner && !(await userCanDo(req.session, 'admin_paymentreq'))) {
       return res.status(403).json({ error: 'You can only edit your own payment requests' });
     }
-    if (row.status !== 'pending') {
+    // A decided request: only while the "Edit approved requests" switch is on,
+    // and only for Admins / Payment Request "Admin" — not its owner.
+    if (row.status !== 'pending' && !((await editApprovedOn()) && (await userCanDo(req.session, 'admin_paymentreq')))) {
       return res.status(400).json({ error: `Already ${row.status} — this request can no longer be edited` });
     }
 
@@ -324,33 +349,15 @@ app.put('/api/payment-requests/:id', requireAuth, async (req, res) => {
     // without the other leaves the table and the email disagreeing about how
     // much money this is. `reason` arrives already encoded from the client,
     // exactly as it does on create; the column is written from the same number.
-    // `AND status='pending'` closes the gap between the check above and this
-    // write: an approval landing in between must not let the numbers change
-    // under a decision that has already been made.
+    // `AND status=?` (the status checked above) closes the gap between that check
+    // and this write: an approval landing in between must not let the numbers
+    // change under a decision that has already been made.
     const [upd] = await db.query(
-      "UPDATE payment_requests SET bank_name=?, card_number=?, amount=?, reason=?, departments=? WHERE id=? AND status='pending'",
-      [bank, card, amt, why, JSON.stringify(departments), id]
+      "UPDATE payment_requests SET bank_name=?, card_number=?, amount=?, reason=?, departments=? WHERE id=? AND status=?",
+      [bank, card, amt, why, JSON.stringify(departments), id, row.status]
     );
     if (!upd.affectedRows) return res.status(409).json({ error: 'This request was just decided and can no longer be edited' });
     res.json({ success: true });
-  } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
-// PUT /api/payment-requests/:id/bank — correct the bank name on one request, whatever
-// its status (the full edit above is for pending requests only). Admins, or Payment
-// Request at the "Admin" level. Only this request changes: the card list and the
-// card number stay as they are.
-app.put('/api/payment-requests/:id/bank', requireAuth, async (req, res) => {
-  try {
-    if (!(await userCanDo(req.session, 'admin_paymentreq'))) return res.status(403).json({ error: 'Access denied' });
-    const bank = String((req.body && req.body.bank_name) || '').replace(/\s+/g, ' ').trim();
-    if (!bank) return res.status(400).json({ error: 'Enter a bank name' });
-    if (bank.length > 50) return res.status(400).json({ error: 'A bank name can be at most 50 characters' });
-    if (bank === '__system__') return res.status(400).json({ error: 'That name is reserved' });
-    const [[row]] = await db.query('SELECT id, bank_name FROM payment_requests WHERE id=?', [req.params.id]);
-    if (!row || row.bank_name === '__system__') return res.status(404).json({ error: 'Payment request not found' });
-    await db.query('UPDATE payment_requests SET bank_name=? WHERE id=?', [bank, row.id]);
-    res.json({ success: true, bank_name: bank, was: row.bank_name });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

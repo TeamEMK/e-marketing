@@ -19,7 +19,7 @@ function StatusBadge({ s }) {
   return <span ref={css('background:#fef9c3;color:#a16207;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px')}>⏳ Pending</span>;
 }
 
-function Row({ r, i, sentinels, isAdminView, canMark }) {
+function Row({ r, i, sentinels, isAdminView, canMark, editApproved }) {
   const parsed = legacy('prParseReason', r.reason) || {};
   const amt = r.amount > 0 ? Number(r.amount) : parsed.amount;
   const cur = parsed.currency || '₹';
@@ -57,14 +57,7 @@ function Row({ r, i, sentinels, isAdminView, canMark }) {
     <tr ref={css(i % 2 ? 'background:#f8fafc' : '')}>
       <td ref={css('padding:9px 14px;font-size:12px;color:#64748b')}>{new Date(r.created_at).toLocaleDateString('en-IN')}</td>
       {isAdminView ? <td ref={css('padding:9px 14px;font-size:13px;font-weight:600')}>{r.name}</td> : null}
-      <td ref={css('padding:9px 14px;font-size:13px;font-weight:600;white-space:nowrap')}>
-        {r.bank_name}
-        {/* A decided request has no Edit, so the admin view can still fix its bank (prChangeBank). */}
-        {isAdminView && r.status !== 'pending' ? (
-          <button onClick={() => legacy('prChangeBank', r.id)} title="Change bank"
-            ref={css('background:none;border:none;cursor:pointer;font-size:12px;line-height:1;padding:2px 4px;margin-left:4px;color:#64748b')}>✏️</button>
-        ) : null}
-      </td>
+      <td ref={css('padding:9px 14px;font-size:13px;font-weight:600')}>{r.bank_name}</td>
       <td ref={css('padding:9px 14px;font-size:12px')}>{r.card_number}</td>
       <td ref={css('padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a')}>{amt ? cur + Number(amt).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}</td>
       <td ref={css('padding:9px 14px;font-size:12px;color:#374151;max-width:200px')}>{parsed.reason || r.reason}</td>
@@ -72,7 +65,8 @@ function Row({ r, i, sentinels, isAdminView, canMark }) {
       <td ref={css('padding:9px 14px;max-width:190px')} dangerouslySetInnerHTML={{ __html: legacy('prDeptCell', r) || '' }} />
       <td ref={css('padding:9px 14px;white-space:nowrap')}>
         <StatusBadge s={r.status} />
-        {r.status === 'pending' ? (
+        {/* Pending: as always. Approved / rejected: only while the admin switch is on. */}
+        {r.status === 'pending' || (editApproved && isAdminView) ? (
           <button onClick={() => legacy('prOpenEditModal', r.id)} title="Edit this request"
             ref={css('background:none;border:none;cursor:pointer;font-size:13px;line-height:1;padding:2px 4px;margin-left:6px;color:#64748b')}
             onMouseOver={e => { e.currentTarget.style.color = '#4f46e5'; }} onMouseOut={e => { e.currentTarget.style.color = '#64748b'; }}>✏️</button>
@@ -92,10 +86,18 @@ export default function PaymentRequests() {
   const canMark = r => (user && user.role === 'admin') || (user && user.canApprovePayments) || Number(r.submitted_by) === Number(user && user.id);
   const [data, setData] = useState(null);   // { rows, sentinels } | { error }
   const [month, setMonth] = useState('');
+  // The "Edit approved requests" switch (admin view only; off by default).
+  const [editApproved, setEditApproved] = useState(false);
+  const [savingSwitch, setSavingSwitch] = useState(false);
 
   const load = useCallback(async () => {
     try {
-      const all = await api(isAdminView ? '/api/payment-requests' : '/api/payment-requests/my');
+      const [all, set] = await Promise.all([
+        api(isAdminView ? '/api/payment-requests' : '/api/payment-requests/my'),
+        isAdminView ? api('/api/payment-requests/settings') : Promise.resolve(null),
+      ]);
+      const on = !!(set && set.editApproved);
+      setEditApproved(on); legacy('prSetEditApproved', on);
       if (!Array.isArray(all)) { setData({ rows: [], sentinels: [] }); return; }
       const rows = all.filter(r => r.bank_name !== '__system__');
       legacy('prSetMyRows', rows);   // the Edit pop-up fills itself from these
@@ -108,6 +110,16 @@ export default function PaymentRequests() {
     load();
     return () => legacy('prSetReact', null);
   }, [load]);
+
+  const flipSwitch = async () => {
+    if (savingSwitch) return;
+    setSavingSwitch(true);
+    const res = await api('/api/payment-requests/settings', 'PUT', { editApproved: !editApproved });
+    setSavingSwitch(false);
+    if (!res || res.error) { legacy('showToast', (res && res.error) || 'Could not save', 'error'); return; }
+    setEditApproved(!!res.editApproved); legacy('prSetEditApproved', !!res.editApproved);
+    legacy('showToast', res.editApproved ? 'Approved requests can be edited now' : 'Editing approved requests is off');
+  };
 
   const rows = (data && data.rows) || [];
   const months = [...new Set(rows.map(monthOf).filter(Boolean))].sort().reverse();
@@ -137,7 +149,7 @@ export default function PaymentRequests() {
         <th ref={css(TH_C)}>Payment Status</th>
         <th ref={css(TH_C)}>Bill</th>
       </tr></thead>
-      <tbody>{shown.map((r, i) => <Row key={r.id} r={r} i={i} sentinels={data.sentinels} isAdminView={isAdminView} canMark={canMark} />)}</tbody>
+      <tbody>{shown.map((r, i) => <Row key={r.id} r={r} i={i} sentinels={data.sentinels} isAdminView={isAdminView} canMark={canMark} editApproved={editApproved} />)}</tbody>
     </table>
   );
 
@@ -145,7 +157,18 @@ export default function PaymentRequests() {
     <>
       <div ref={css('display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:12px;flex-wrap:wrap')}>
         <div ref={css('font-size:14px;font-weight:700;color:#0f172a')}>{isAdminView ? 'All Requests' : 'My Requests'}</div>
-        <SearchSelect value={m} onChange={setMonth} options={options} placeholder="All months" style={MONTH_STYLE} />
+        <div ref={css('display:flex;align-items:center;gap:12px;flex-wrap:wrap')}>
+          {isAdminView ? (
+            <label id="prEditApprovedSwitch" title="While on, admins can edit approved and rejected requests in full. Turn it off when done."
+              ref={css('display:inline-flex;align-items:center;gap:8px;font-size:12.5px;font-weight:600;color:#475569;cursor:pointer;user-select:none')}>
+              <input type="checkbox" checked={editApproved} disabled={savingSwitch} onChange={flipSwitch}
+                ref={css('width:16px;height:16px;cursor:pointer;accent-color:#d97706')} />
+              Edit approved requests
+              {editApproved ? <span ref={css('background:#fef3c7;color:#b45309;font-size:11px;font-weight:700;padding:2px 8px;border-radius:10px')}>ON · turn off when done</span> : null}
+            </label>
+          ) : null}
+          <SearchSelect value={m} onChange={setMonth} options={options} placeholder="All months" style={MONTH_STYLE} />
+        </div>
       </div>
       <div id="prMyList" ref={css('background:#fff;border:1px solid #e2e8f0;border-radius:12px;overflow-x:auto')}>{body}</div>
     </>

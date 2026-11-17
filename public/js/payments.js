@@ -250,25 +250,10 @@ function prSetReact(fn) { PR_REACT = fn; }
 function prSetMyRows(rows) { _prMyRows = rows; }
 function prIsBillUploading(id) { return typeof _prBillUploading !== 'undefined' && _prBillUploading.has(id); }
 
-// ✏️ beside the bank on an approved or rejected request (admin_paymentreq): fixes
-// the bank name on that one request. The saved card list is left alone.
-async function prChangeBank(id) {
-  const r = (_prMyRows || []).find(x => Number(x.id) === Number(id));
-  if (!r) return;
-  const p = prParseReason(r.reason) || {};
-  const amt = r.amount > 0 ? Number(r.amount) : p.amount;
-  const what = [r.card_number, amt ? (p.currency || '₹') + Number(amt).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '', p.reason || r.reason]
-    .filter(Boolean).join(' · ');
-  const bank = await appPromptText(`${what}\n\nOnly this request changes. The saved cards stay as they are.`,
-    { title: 'Change bank', placeholder: 'Bank name', value: r.bank_name, okLabel: 'Save' });
-  if (typeof bank !== 'string') return;
-  const name = bank.replace(/\s+/g, ' ').trim();
-  if (!name || name === r.bank_name) return;
-  const res = await api(`/api/payment-requests/${id}/bank`, 'PUT', { bank_name: name });
-  if (!res || res.error) { showToast((res && res.error) || 'Could not change the bank', 'error'); return; }
-  showToast(`Bank changed to ${name}`);
-  loadMyPaymentRequests();
-}
+// The "Edit approved requests" switch as the list last read it (PaymentRequests.jsx
+// sets it): while on, an admin's Edit opens on approved and rejected rows too.
+let _prEditApproved = false;
+function prSetEditApproved(on) { _prEditApproved = !!on; }
 
 async function loadMyPaymentRequests() {
   const root = document.getElementById('prListReactRoot');
@@ -657,7 +642,7 @@ let _prMyRows = [];
 async function prOpenEditModal(id){
   const r = _prMyRows.find(x => Number(x.id) === Number(id));
   if (!r) { showToast('Request not found — refresh and try again', 'error'); return; }
-  if (r.status !== 'pending') { showToast(`Already ${r.status} — this request can no longer be edited`, 'error'); return; }
+  if (r.status !== 'pending' && !(_prEditApproved && canDo('admin_paymentreq'))) { showToast(`Already ${r.status} — this request can no longer be edited`, 'error'); return; }
   // Cached after the first call, so this is free on every open but one — and
   // it means the picker is never empty just because the modal opened first.
   await prLoadDepartments();
