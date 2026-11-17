@@ -2101,7 +2101,7 @@ function downloadSample() {
   // status is optional: "done" creates the task already marked done.
   // project: the client's project by name (Client Master → Projects); required
   // for a client that has projects.
-  const csv = `doer_email,approver_email,due_date,priority,approval,description,remarks,client_name,project,status\npriyanka@test.com,aman@test.com,2026-04-01,high,yes,Complete sales report,Follow up needed,Ambraee,ERP,\npooja@test.com,aman@test.com,2026-04-02,medium,no,Prepare presentation,,Sohan Health Care,Google Sheet,done`;
+  const csv = `doer_email,approver_email,due_date,priority,approval,description,remarks,client_name,project,status\npriyanka@test.com,aman@test.com,2026-04-01,high,yes,Complete sales report,Follow up needed,Ambraee,ERP,\npooja@test.com,aman@test.com,2026-04-02,medium,no,Prepare presentation,,Sohan Health Care,Google Sheets,done`;
   downloadFile(csv,'delegation_sample.csv');
 }
 
@@ -2110,10 +2110,10 @@ function downloadSampleC() {
     'user_email,frequency,start_date,description,remarks,client_name,project',
     'priyanka@test.com,daily,2026-04-01,Review attendance sheet,,Ambraee,ERP',
     'pooja@test.com,weekly,2026-04-01,Send weekly report,,Ambraee,ERP',
-    'rahul@test.com,monthly,2026-04-01,Submit monthly expense report,April month,Sohan Health Care,Google Sheet',
-    'neha@test.com,yearly,2026-04-01,Annual performance self-review,,Sohan Health Care,Google Sheet',
+    'rahul@test.com,monthly,2026-04-01,Submit monthly expense report,April month,Sohan Health Care,Google Sheets',
+    'neha@test.com,yearly,2026-04-01,Annual performance self-review,,Sohan Health Care,Google Sheets',
     'amit@test.com,alternative_week,2026-04-01,Bi-weekly team sync notes,,Ambraee,ERP',
-    'sneha@test.com,quarterly,2026-04-01,Quarterly audit checklist,Q2 2026,Sohan Health Care,Google Sheet',
+    'sneha@test.com,quarterly,2026-04-01,Quarterly audit checklist,Q2 2026,Sohan Health Care,Google Sheets',
   ].join('\n');
   downloadFile(csv,'checklist_bulk_sample.csv');
 }
@@ -2205,7 +2205,10 @@ async function taskDelegateCsvSend(file, busy, close) {
   // Spaces are ignored when matching a client, so "E-Marketing (Operation)"
   // still finds "E-Marketing(Operation)" instead of dropping the row.
   const clientKey = s => (s || '').toLowerCase().replace(/\s+/g, '');
+  // By registered name or brand name — the pickers and Client Master show the brand
+  // name, so that is what a sheet usually carries. A registered name wins a clash.
   const clientByName = {};
+  (allClients || []).forEach(c => { if (c.brand_name && !clientByName[clientKey(c.brand_name)]) clientByName[clientKey(c.brand_name)] = c.id; });
   (allClients || []).forEach(c => { clientByName[clientKey(c.name)] = c.id; });
   // Each client's active projects, fetched once per client the sheet names.
   const projectsOf = {};
@@ -2344,7 +2347,9 @@ async function taskChecklistCsvSend(file, close) {
 
   const dataLines = lines.slice(1);
   const [allUsers, allClients] = await Promise.all([api('/api/users'), api('/api/clients')]);
+  // By registered name or brand name (what the app shows); a registered name wins a clash.
   const clientByName = {};
+  (allClients || []).forEach(c => { const b = String(c.brand_name || '').toLowerCase().trim(); if (b && !clientByName[b]) clientByName[b] = c.id; });
   (allClients || []).forEach(c => { clientByName[c.name.toLowerCase().trim()] = c.id; });
   // Each client's active projects, fetched once per client the sheet names.
   const projectsOf = {};
