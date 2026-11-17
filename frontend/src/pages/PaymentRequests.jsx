@@ -57,7 +57,14 @@ function Row({ r, i, sentinels, isAdminView, canMark }) {
     <tr ref={css(i % 2 ? 'background:#f8fafc' : '')}>
       <td ref={css('padding:9px 14px;font-size:12px;color:#64748b')}>{new Date(r.created_at).toLocaleDateString('en-IN')}</td>
       {isAdminView ? <td ref={css('padding:9px 14px;font-size:13px;font-weight:600')}>{r.name}</td> : null}
-      <td ref={css('padding:9px 14px;font-size:13px;font-weight:600')}>{r.bank_name}</td>
+      <td ref={css('padding:9px 14px;font-size:13px;font-weight:600;white-space:nowrap')}>
+        {r.bank_name}
+        {/* A decided request has no Edit, so the admin view can still fix its bank (prChangeBank). */}
+        {isAdminView && r.status !== 'pending' ? (
+          <button onClick={() => legacy('prChangeBank', r.id)} title="Change bank"
+            ref={css('background:none;border:none;cursor:pointer;font-size:12px;line-height:1;padding:2px 4px;margin-left:4px;color:#64748b')}>✏️</button>
+        ) : null}
+      </td>
       <td ref={css('padding:9px 14px;font-size:12px')}>{r.card_number}</td>
       <td ref={css('padding:9px 14px;font-size:13px;font-weight:700;text-align:right;color:#0f172a')}>{amt ? cur + Number(amt).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '—'}</td>
       <td ref={css('padding:9px 14px;font-size:12px;color:#374151;max-width:200px')}>{parsed.reason || r.reason}</td>

@@ -250,6 +250,26 @@ function prSetReact(fn) { PR_REACT = fn; }
 function prSetMyRows(rows) { _prMyRows = rows; }
 function prIsBillUploading(id) { return typeof _prBillUploading !== 'undefined' && _prBillUploading.has(id); }
 
+// ✏️ beside the bank on an approved or rejected request (admin_paymentreq): fixes
+// the bank name on that one request. The saved card list is left alone.
+async function prChangeBank(id) {
+  const r = (_prMyRows || []).find(x => Number(x.id) === Number(id));
+  if (!r) return;
+  const p = prParseReason(r.reason) || {};
+  const amt = r.amount > 0 ? Number(r.amount) : p.amount;
+  const what = [r.card_number, amt ? (p.currency || '₹') + Number(amt).toLocaleString('en-IN', { minimumFractionDigits: 2 }) : '', p.reason || r.reason]
+    .filter(Boolean).join(' · ');
+  const bank = await appPromptText(`${what}\n\nOnly this request changes. The saved cards stay as they are.`,
+    { title: 'Change bank', placeholder: 'Bank name', value: r.bank_name, okLabel: 'Save' });
+  if (typeof bank !== 'string') return;
+  const name = bank.replace(/\s+/g, ' ').trim();
+  if (!name || name === r.bank_name) return;
+  const res = await api(`/api/payment-requests/${id}/bank`, 'PUT', { bank_name: name });
+  if (!res || res.error) { showToast((res && res.error) || 'Could not change the bank', 'error'); return; }
+  showToast(`Bank changed to ${name}`);
+  loadMyPaymentRequests();
+}
+
 async function loadMyPaymentRequests() {
   const root = document.getElementById('prListReactRoot');
   if (root) return PR_REACT ? PR_REACT() : emkReactMount('payreq', root);

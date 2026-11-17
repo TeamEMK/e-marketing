@@ -336,6 +336,24 @@ app.put('/api/payment-requests/:id', requireAuth, async (req, res) => {
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// PUT /api/payment-requests/:id/bank — correct the bank name on one request, whatever
+// its status (the full edit above is for pending requests only). Admins, or Payment
+// Request at the "Admin" level. Only this request changes: the card list and the
+// card number stay as they are.
+app.put('/api/payment-requests/:id/bank', requireAuth, async (req, res) => {
+  try {
+    if (!(await userCanDo(req.session, 'admin_paymentreq'))) return res.status(403).json({ error: 'Access denied' });
+    const bank = String((req.body && req.body.bank_name) || '').replace(/\s+/g, ' ').trim();
+    if (!bank) return res.status(400).json({ error: 'Enter a bank name' });
+    if (bank.length > 50) return res.status(400).json({ error: 'A bank name can be at most 50 characters' });
+    if (bank === '__system__') return res.status(400).json({ error: 'That name is reserved' });
+    const [[row]] = await db.query('SELECT id, bank_name FROM payment_requests WHERE id=?', [req.params.id]);
+    if (!row || row.bank_name === '__system__') return res.status(404).json({ error: 'Payment request not found' });
+    await db.query('UPDATE payment_requests SET bank_name=? WHERE id=?', [bank, row.id]);
+    res.json({ success: true, bank_name: bank, was: row.bank_name });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.patch('/api/payment-requests/:id', requireAuth, async (req, res) => {
   try {
     if (!(await isPaymentApprover(req.session))) return res.status(403).json({ error:'Access denied' });

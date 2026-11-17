@@ -104,6 +104,7 @@ function _showAppPrompt({ title, message, buttons, input }) {
     if (input) {
       field = document.createElement('textarea');
       field.placeholder = input.placeholder || '';
+      field.value = input.value || '';
       field.style.cssText = 'display:block;width:100%;min-height:70px;margin-top:10px;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit;outline:none;resize:vertical;white-space:normal';
       bodyEl.appendChild(field);
     }
@@ -150,9 +151,10 @@ function appConfirm(message, title = 'Please confirm') {
 }
 // In-app replacement for native prompt(). Resolves with the typed text ('' when
 // left empty), or a non-string on Cancel / Esc, so a cancelled prompt never acts.
-function appPromptText(message, { title = 'Please confirm', placeholder = '', okLabel = 'OK', okClass = 'btn btn-primary' } = {}) {
+// value: text the box starts with.
+function appPromptText(message, { title = 'Please confirm', placeholder = '', value = '', okLabel = 'OK', okClass = 'btn btn-primary' } = {}) {
   return _showAppPrompt({
-    title, message, input: { placeholder },
+    title, message, input: { placeholder, value },
     buttons: [
       { label: 'Cancel', className: 'btn btn-outline', value: null },
       { label: okLabel,  className: okClass, takesInput: true }
