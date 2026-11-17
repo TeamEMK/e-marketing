@@ -1,0 +1,43 @@
+/* ── Sidebar menu search (sidebar-search.js) ──
+   A box under the logo that narrows the menu to the pages whose name matches.
+   Collapsed (60px) it is just the magnifier; the field shows once the sidebar
+   opens on hover, is pinned, or is the phone drawer. */
+.sb-search{
+  position:relative;margin:10px 8px 0;height:36px;flex-shrink:0;
+  display:flex;align-items:center;border-radius:9px;
+  background:rgba(148,163,184,.12);border:1px solid rgba(148,163,184,.22);
+  color:#94a3b8;overflow:hidden;transition:border-color .15s,background .15s;
+}
+.sb-search:focus-within{border-color:rgba(var(--accent-light-rgb),.6);background:rgba(148,163,184,.18);}
+.sb-search-icon{width:16px;height:16px;flex-shrink:0;margin:0 0 0 12px;pointer-events:none;}
+.sb-search input{
+  flex:1;min-width:0;height:100%;border:0;outline:0;background:transparent;
+  padding:0 8px 0 10px;font:inherit;font-size:13px;color:#e2e8f0;
+  opacity:0;transition:opacity .2s .1s;
+}
+.sb-search input::placeholder{color:#64748b;}
+.sb-search input::-webkit-search-cancel-button{display:none;}
+.sb-search-clear{
+  display:none;flex-shrink:0;width:24px;height:24px;margin-right:6px;border:0;border-radius:6px;
+  background:transparent;color:inherit;cursor:pointer;font-size:16px;line-height:1;padding:0;
+}
+.sb-search-clear:hover{background:rgba(148,163,184,.2);}
+.sb-search.has-text .sb-search-clear{display:block;}
+.sidebar:hover .sb-search input,.sidebar.open .sb-search input{opacity:1;}
+@media (min-width:769px){ .sb-pinned .sidebar .sb-search input{opacity:1;} }
+
+/* While searching: every group open, misses hidden. Pages the user may not see
+   keep their own inline display:none, so they never come back here. */
+.nav.sb-searching .nav-group.collapsed .nav-group-items{display:flex;}
+.nav.sb-searching .nav-group.collapsed .nav-group-chevron{transform:none;}
+.nav.sb-searching .sb-miss,.nav.sb-searching .nav-divider{display:none !important;}
+.sb-search-empty{display:none;padding:10px 11px;font-size:12.5px;color:#64748b;white-space:nowrap;}
+.nav.sb-searching.sb-nothing .sb-search-empty{display:block;}
+
+/* Amber (the default look) has a light sidebar; its dark mode keeps the rules above. */
+:root:not([data-theme]):not(.amb-dark) .sb-search{background:#FFF8EA;border-color:#F3E6C8;color:#9C8A72;}
+:root:not([data-theme]):not(.amb-dark) .sb-search:focus-within{border-color:#F0A500;background:#fff;}
+:root:not([data-theme]):not(.amb-dark) .sb-search input{color:#2B2118;}
+:root:not([data-theme]):not(.amb-dark) .sb-search input::placeholder{color:#B5A58C;}
+:root:not([data-theme]):not(.amb-dark) .sb-search-clear:hover{background:#FFF0D2;}
+:root:not([data-theme]):not(.amb-dark) .sb-search-empty{color:#9C8A72;}

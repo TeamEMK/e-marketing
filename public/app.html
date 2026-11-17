@@ -33,6 +33,7 @@
 <link rel="stylesheet" href="/css/theme-picker.css?v=20261027c"/>
 <link rel="stylesheet" href="/css/amber.css?v=20261101a"/>
 <link rel="stylesheet" href="/css/dark.css?v=20261030c"/>
+<link rel="stylesheet" href="/css/sidebar-search.css?v=20261117a"/>
 <link rel="stylesheet" href="/css/themes/navratri.css?v=20261027c"/>
 <link rel="stylesheet" href="/css/themes/dussehra.css?v=20261027c"/>
 <link rel="stylesheet" href="/css/themes/holi.css?v=20261027c"/>
@@ -78,6 +79,12 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
     <div id="sidebarLogoFallback" style="display:none;width:34px;height:34px;background:linear-gradient(135deg,var(--brand-1),var(--brand-2));border-radius:8px;place-items:center;color:#fff;font-weight:700;font-size:15px;font-style:italic;flex-shrink:0">e</div>
     <div class="logo-text">E-Marketing<small class="amb-sub">ERP</small></div>
     <button type="button" class="sb-pin" id="sbPinBtn" onclick="toggleSidebarPin()" title="Keep the sidebar open" aria-pressed="false"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg></button>
+  </div>
+  <!-- Menu search (sidebar-search.js): narrows the menu to matching pages. -->
+  <div class="sb-search" id="sbSearch" title="Search the menu">
+    <svg class="sb-search-icon" fill="none" stroke="currentColor" viewBox="0 0 24 24" aria-hidden="true"><path stroke-linecap="round" stroke-linejoin="round" stroke-width="2" d="M21 21l-4.35-4.35M11 18a7 7 0 100-14 7 7 0 000 14z"/></svg>
+    <input type="search" placeholder="Search menu…" aria-label="Search the menu" autocomplete="off" spellcheck="false"/>
+    <button type="button" class="sb-search-clear" aria-label="Clear search">×</button>
   </div>
   <nav class="nav">
     <div class="nav-item active" onclick="navigate('dashboard',this)">
@@ -4458,6 +4465,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/react-bridge.js?v=20261116q"></script>
 <script src="/js/dashboard.js?v=20261116b"></script>
 <script src="/js/amber-ui.js?v=20261107a"></script>
+<script src="/js/sidebar-search.js?v=20261117a"></script>
 <script src="/js/tasks.js?v=20261117a"></script>
 <script src="/js/tasks-report.js?v=20261107b"></script>
 <script src="/js/users.js?v=20261109a"></script>
