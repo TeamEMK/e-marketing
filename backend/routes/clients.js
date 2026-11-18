@@ -801,6 +801,26 @@ app.put('/api/project-settings', requireAuth, requireAdmin, async (req, res) => 
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// Why the task forms do or do not ask for a project, for the line under Client:
+// { has_projects, rules (⚙️ Project Rules names departments), needs, department
+// (the doer's, as stored) }. Staff only (client logins never reach /api/clients).
+app.get('/api/clients/:id/project-need', requireAuth, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10) || 0;
+    const [[n]] = await db.query('SELECT COUNT(*) AS n FROM client_projects WHERE client_id=? AND is_active=1', [id]);
+    const rules = (await projectBreakdown.projectDepartments(db)).length > 0;
+    const doer = parseInt(req.query.doer, 10) || 0;
+    let department = null;
+    if (doer) {
+      const [[u]] = await db.query('SELECT department FROM users WHERE id=?', [doer]);
+      department = u ? String(u.department || '').trim() : null;
+    }
+    const has = Number(n.n) > 0;
+    const needs = has && (doer ? await projectBreakdown.doerNeedsProject(db, doer) : !rules);
+    res.json({ has_projects: has, rules, needs, department });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // Active projects, for pickers; ?all=1 adds archived ones (Client Master).
 // ?doer=<user id> (the task forms): [] when that doer's tasks do not need a
 // project under ⚙️ Project Rules, so the form shows no Project field; ?doer=

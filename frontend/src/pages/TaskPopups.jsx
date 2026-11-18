@@ -40,10 +40,15 @@ const errBox = msg => <div className="alert error" ref={css(msg ? 'display: bloc
 function useClientProjects(client, initial = '', keep = null, doer = '') {
   const [project, setProject] = useState(initial ? String(initial) : '');
   const [projects, setProjects] = useState(null);
+  // Why a project is or is not asked for (the line under Client): see ProjectHint.
+  const [need, setNeed] = useState(null);
   useEffect(() => {
     let live = true;
-    setProjects(null);
+    setProjects(null); setNeed(null);
     if (!client) { setProject(''); return; }
+    api(`/api/clients/${client}/project-need?doer=${encodeURIComponent(doer || '')}`).then(r => {
+      if (live && r && !r.error) setNeed(r);
+    });
     // ?doer= always goes, empty until a doer is chosen: with Project Rules set, the
     // field then waits for the doer instead of showing for everyone.
     api(`/api/clients/${client}/projects?doer=${encodeURIComponent(doer || '')}`).then(r => {
@@ -57,18 +62,44 @@ function useClientProjects(client, initial = '', keep = null, doer = '') {
     });
     return () => { live = false; };
   }, [client, doer]);
-  return [project, setProject, projects];
+  return [project, setProject, projects, need];
 }
 
-// Shown only for a client that has projects; then it is required.
-function ProjectField({ project, setProject, projects }) {
+// Shown only for a client that has projects; then it is required. boxRef lets a
+// failed save bring it into view; missing draws it red until a project is picked.
+function ProjectField({ project, setProject, projects, boxRef, missing }) {
   if (!projects || !projects.length) return null;
+  const red = missing && !project;
   return (
-    <div className="form-group">
+    <div className="form-group" ref={boxRef}>
       <label>Project <span ref={css('color:#dc2626')}>*</span></label>
-      <SearchSelect value={project} onChange={setProject} placeholder="— Select Project —" options={[{ value: '', label: '— Select Project —' }, ...projects]} />
+      <div ref={css(red ? 'border-radius:10px;box-shadow:0 0 0 2px #dc2626' : '')}>
+        <SearchSelect value={project} onChange={setProject} placeholder="— Select Project —" options={[{ value: '', label: '— Select Project —' }, ...projects]} />
+      </div>
+      {red ? <div ref={css('color:#dc2626;font-size:12px;margin-top:4px')}>Pick this client's project to assign the task.</div> : null}
     </div>
   );
+}
+
+// The line under Client while no Project field shows for a client that has
+// projects: either the doer is still to be chosen, or their department is not in
+// Client Master → ⚙️ Project Rules (named, so a misspelt department is plain to see).
+function ProjectHint({ need, projects, doerName }) {
+  if (!need || !need.has_projects || !need.rules || (projects && projects.length)) return null;
+  const text = !doerName
+    ? 'This client has projects. Choose the doer: a Project field appears when their department needs one.'
+    : `No project needed: ${doerName}'s department (${need.department || 'none set'}) is not in Project Rules.`;
+  return <div ref={css('margin:-6px 0 12px;font-size:12px;color:#64748b')}>ℹ️ {text}</div>;
+}
+
+// After "Please select a project": scroll the field into view, open its list, mark it.
+function showMissingProject(boxRef, setMissing) {
+  setMissing(true);
+  const box = boxRef.current;
+  if (!box) return;
+  box.scrollIntoView({ block: 'center', behavior: 'smooth' });
+  const input = box.querySelector('input.ss-input');
+  if (input) setTimeout(() => input.focus(), 350);
 }
 const TEXTAREA = "min-height:70px;width:100%;padding:9px 12px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:'Inter',sans-serif;outline:none;resize:vertical";
 
@@ -353,12 +384,16 @@ function ChecklistBody({ d, close }) {
   const [busy, setBusy] = useState(false);
   const file = useRef(null);
   const set = (k, v) => setF(x => ({ ...x, [k]: v }));
-  const [project, setProject, projects] = useClientProjects(f.client, '', null, f.doer);
+  const [project, setProject, projects, need] = useClientProjects(f.client, '', null, f.doer);
+  const projBox = useRef(null);
+  const [projMissing, setProjMissing] = useState(false);
+  const doerName = ((d.users.find(u => u.value === f.doer) || {}).label || '').trim();
   const preview = legacy('taskChecklistPreview', f.freq, f.date, f.endDate, f.desc);
   const generate = async () => {
     setErr(''); setOk('');
     const msg = await legacy('taskChecklistSend', { ...f, project, needProject: !!(projects && projects.length) }, setBusy, setOk, close);
     if (msg) setErr(msg);
+    if (msg === 'Please select a project') showMissingProject(projBox, setProjMissing);
   };
   return (
     <>
@@ -393,7 +428,8 @@ function ChecklistBody({ d, close }) {
         <SearchSelect value={f.client} onChange={v => set('client', v)} placeholder="Select Client"
           options={[{ value: '', label: 'Select Client' }, ...d.clients]} />
       </div>
-      <ProjectField project={project} setProject={setProject} projects={projects} />
+      <ProjectHint need={need} projects={projects} doerName={doerName} />
+      <ProjectField project={project} setProject={setProject} projects={projects} boxRef={projBox} missing={projMissing} />
 
       <div className="form-group">
         <label>Task Name / Description</label>
@@ -451,7 +487,10 @@ function DelegateBody({ d, close }) {
   const [approval, setApproval] = useState('no');
   const [approver, setApprover] = useState('');
   const [client, setClient] = useState(has(d.clients, d.prefill.clientId) ? String(d.prefill.clientId) : '');
-  const [project, setProject, projects] = useClientProjects(client, '', null, doer);
+  const [project, setProject, projects, need] = useClientProjects(client, '', null, doer);
+  const projBox = useRef(null);
+  const [projMissing, setProjMissing] = useState(false);
+  const doerName = ((d.users.find(u => u.value === doer) || {}).label || '').trim();
   const [url, setUrl] = useState('');
   const [remarks, setRemarks] = useState('');
   const [cards, setCards] = useState(() => [newCard(d.today)]);
@@ -512,6 +551,7 @@ function DelegateBody({ d, close }) {
       close,
     });
     if (msg) setErr(msg);
+    if (msg === 'Please select a project') showMissingProject(projBox, setProjMissing);
   };
   const many = cards.length > 1;
   const email = (d.users.find(u => u.value === approver) || {}).email || '';
@@ -552,7 +592,8 @@ function DelegateBody({ d, close }) {
         <label>Client <span ref={css('color:#dc2626')}>*</span></label>
         <SearchSelect value={client} onChange={setClient} placeholder="— Select Client —" options={[{ value: '', label: '— Select Client —' }, ...d.clients]} />
       </div>
-      <ProjectField project={project} setProject={setProject} projects={projects} />
+      <ProjectHint need={need} projects={projects} doerName={doerName} />
+      <ProjectField project={project} setProject={setProject} projects={projects} boxRef={projBox} missing={projMissing} />
       {cards.map((c, i) => (
         <div data-task-row="" key={c.key} ref={css(CARD)}>
           <div ref={css('display:flex;align-items:center;justify-content:space-between;height:18px')}>
