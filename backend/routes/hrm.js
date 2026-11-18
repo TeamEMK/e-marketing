@@ -57,8 +57,10 @@ const HRM_JOINING_FORM_DEPTS = (process.env.HRM_JOINING_FORM_DEPTS || '*')
   .split(',').map(d => d.trim().toLowerCase()).filter(Boolean);
 const HRM_JOINING_FORM_URL    = process.env.HRM_JOINING_FORM_URL    || '';
 // Shared secret the Apps Script must send back on the webhook — the form is
-// public, so the submission endpoint can't be.
-const HRM_JOINING_FORM_SECRET = process.env.HRM_JOINING_FORM_SECRET || 'emk-joining-form-secret';
+// public, so the submission endpoint can't be. No fallback: a default written
+// here would be known to anyone who has seen the code, so with the variable
+// unset the webhook refuses every submission.
+const HRM_JOINING_FORM_SECRET = process.env.HRM_JOINING_FORM_SECRET || '';
 
 function hrmNeedsJoiningForm(department) {
   if (HRM_JOINING_FORM_DEPTS.includes('*')) return true;
@@ -857,8 +859,12 @@ function hrmJoiningExtra(body, pick) {
 app.post('/api/hrm/joining-form', async (req, res) => {
   try {
     const body = req.body || {};
-    const secret = req.get('x-hrm-form-secret') || body.secret || '';
-    if (secret !== HRM_JOINING_FORM_SECRET) return res.status(401).json({ error: 'Invalid secret' });
+    const given = Buffer.from(String(req.get('x-hrm-form-secret') || body.secret || ''));
+    const expected = Buffer.from(HRM_JOINING_FORM_SECRET);
+    // Closed while unset; timing-safe so the secret cannot be guessed byte by byte.
+    if (!expected.length || given.length !== expected.length || !require('crypto').timingSafeEqual(given, expected)) {
+      return res.status(401).json({ error: 'Invalid secret' });
+    }
 
     // The script may post our field names or the form's question titles
     // ("Father's Name"), so match on a stripped key: lowercase alphanumerics.

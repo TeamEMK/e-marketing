@@ -9,6 +9,7 @@
 // max_user_connections retry wrapper.
 // Task counts per project for the stats route; it is handed db, so it uses the same instance.
 const projectBreakdown = require('../project-stats');
+const { passwordProblem } = require('../password-rule');
 
 module.exports = function registerClientRoutes(app, deps) {
   const {
@@ -486,6 +487,9 @@ app.post('/api/clients', requireAuth, requireClientsEditor, async (req, res) => 
     if ((loginEmail && !loginPassword) || (!loginEmail && loginPassword)) {
       return res.status(400).json({ error: 'Both login email and password required to provision client login' });
     }
+    // Checked before the client is saved, so a short password cannot leave a
+    // client added without the login that was asked for.
+    if (loginPassword && passwordProblem(loginPassword)) return res.status(400).json({ error: passwordProblem(loginPassword) });
     await ensureKickstartColumn();
     await ensureDepartmentsColumn();
     await ensureAddedByColumn();
@@ -1124,6 +1128,7 @@ app.post('/api/clients/:id/login', requireAuth, requireClientsEditor, async (req
     const email = (req.body.email || '').trim().toLowerCase();
     const password = req.body.password || '';
     if (!email || !password) return res.status(400).json({ error: 'email and password required' });
+    if (passwordProblem(password)) return res.status(400).json({ error: passwordProblem(password) });
     const [[client]] = await db.query('SELECT id, name FROM clients WHERE id=?', [id]);
     if (!client) return res.status(404).json({ error: 'Client not found' });
     const [[existing]] = await db.query(

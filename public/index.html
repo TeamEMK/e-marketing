@@ -770,7 +770,7 @@
         <label>New Password</label>
         <div class="input-wrap">
           <span class="icon">🔒</span>
-          <input type="password" id="resetNewPass" placeholder="At least 6 characters" style="padding-right:38px"
+          <input type="password" id="resetNewPass" placeholder="At least 8 characters" style="padding-right:38px"
                  onkeydown="if(event.key==='Enter')doResetPassword()"/>
           <button type="button" class="toggle-pass" id="toggleResetPass" onclick="toggleResetPassword()" aria-label="Show password">
             <svg id="toggleResetPassIcon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-7 11-7 11 7 11 7-4 7-11 7-11-7-11-7Z"/><circle cx="12" cy="12" r="3"/></svg>
@@ -1285,7 +1285,7 @@ async function doResetPassword(){
   const otp=document.getElementById('resetOtp').value.trim();
   const newPassword=document.getElementById('resetNewPass').value;
   if(!otp||!newPassword){_showErr('Enter the code and a new password');return;}
-  if(newPassword.length<6){_showErr('New password must be at least 6 characters');return;}
+  if(newPassword.length<8){_showErr('New password must be at least 8 characters');return;}
   const btn=document.getElementById('resetBtn');
   const label=btn.textContent; btn.disabled=true; btn.textContent='Resetting…';
   otpOrbit(true);

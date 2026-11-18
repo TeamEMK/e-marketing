@@ -14,10 +14,23 @@ const XLSX = require('xlsx');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
-const JWT_SECRET = process.env.SESSION_SECRET || 'taskmanager_secret_2026';
+// Signs every login token, so it must never be a value written in this file:
+// anyone who has seen the code could forge an admin token with it. Live (Vercel
+// or NODE_ENV=production) without SESSION_SECRET, the server refuses to start.
+// Locally it gets a random secret per run (logins end when the server restarts).
+const JWT_SECRET = (() => {
+  const s = process.env.SESSION_SECRET;
+  if (s) return s;
+  if (process.env.VERCEL || process.env.NOW_REGION || process.env.NODE_ENV === 'production') {
+    throw new Error('SESSION_SECRET is not set — refusing to start rather than sign tokens with a known value');
+  }
+  console.warn('  ⚠️ SESSION_SECRET not set — using a random secret for this local run');
+  return require('crypto').randomBytes(48).toString('hex');
+})();
 
 const cookieParser = require('cookie-parser');
 const helmet = require('helmet');
+const { passwordProblem } = require('./backend/password-rule');
 // ══════════════════════════════════════════════════════
 // SECURITY HEADERS
 // ══════════════════════════════════════════════════════
@@ -65,10 +78,20 @@ app.use(express.urlencoded({ extended: true, limit: '10mb' }));
 // rush of correct logins can never trip it.
 // Memory is per server instance (serverless instances do not share it), so
 // this blunts bursts rather than enforcing an exact global number.
+// The caller's address. Anyone can send their own X-Forwarded-For, so a limiter
+// keyed on it could be dodged by changing the header on every try. On Vercel the
+// platform sets X-Vercel-Forwarded-For / X-Real-IP (and overwrites
+// X-Forwarded-For), so those are read; off Vercel there is no proxy in front and
+// only the socket's own address counts.
+function clientIp(req) {
+  const h = req.headers;
+  const v = process.env.VERCEL ? (h['x-vercel-forwarded-for'] || h['x-real-ip'] || h['x-forwarded-for']) : '';
+  return String(v || req.socket.remoteAddress || '').split(',')[0].trim();
+}
 function ipLimit({ windowMs, max, countOnly, message }) {
   const hits = new Map();
   return (req, res, next) => {
-    const ip = String(req.headers['x-forwarded-for'] || req.socket.remoteAddress || '').split(',')[0].trim();
+    const ip = clientIp(req);
     const now = Date.now();
     let e = hits.get(ip);
     if (!e || now - e.start > windowMs) { e = { start: now, n: 0 }; hits.set(ip, e); }
@@ -1853,7 +1876,10 @@ app.post('/api/login', async (req, res) => {
       sameSite: 'lax',
       maxAge: 7 * 24 * 60 * 60 * 1000
     });
-    res.json({ id: user.id, name: user.name, email: user.email, role: user.role, token });
+    // The token travels only in the httpOnly cookie above. It used to be in this
+    // body too, where any script on the page (or a logged response) could read it;
+    // nothing reads it from here (index.html keeps no copy).
+    res.json({ id: user.id, name: user.name, email: user.email, role: user.role });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -1930,7 +1956,7 @@ app.post('/api/reset-password', async (req, res) => {
     const otp = String(req.body.otp || '').trim();
     const newPassword = String(req.body.newPassword || '');
     if (!email || !otp || !newPassword) return res.status(400).json({ error: 'Email, code and new password are all required' });
-    if (newPassword.length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    if (passwordProblem(newPassword)) return res.status(400).json({ error: passwordProblem(newPassword) });
 
     const [rows] = await db.query(
       `SELECT id, reset_otp_hash, reset_otp_expires, reset_otp_attempts FROM users WHERE LOWER(email)=? AND role<>'client' LIMIT 1`, [email]);
@@ -3632,6 +3658,8 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
     const appRole = validRoles.includes(role) ? role : 'user';
     const userRole = validRoles.includes(user_role) ? user_role : appRole;
     const accessJson = JSON.stringify(sanitizeExtraAccess(extra_access));
+    const weak = passwordProblem(password);
+    if (weak) return res.status(400).json({ error: weak });
     await db.query('INSERT INTO users (name,email,notification_email,password,role,user_role,phone,department,week_off,extra_off,exclude_from_reminder,extra_access,birthday,joining_date) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)',
       [name, email, notification_email||'', bcrypt.hashSync(password,10), appRole, userRole, phone||null, department||'', week_off||'', extra_off||'', exclude_from_reminder?1:0, accessJson, birthday||null, joining_date||null]);
     // Credentials now go by EMAIL to the new user (was WhatsApp).
@@ -3668,6 +3696,8 @@ app.put('/api/users/:id', requireAuth, requireAdmin, async (req, res) => {
     const appRole = validRoles.includes(role) ? role : 'user';
     const userRole = validRoles.includes(user_role) ? user_role : appRole;
     const accessJson = JSON.stringify(sanitizeExtraAccess(extra_access));
+    // A blank password leaves the old one; a new one must pass the rule.
+    if (password && passwordProblem(password)) return res.status(400).json({ error: passwordProblem(password) });
     if (password) await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,password=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=?,extra_access=?,birthday=?,joining_date=? WHERE id=?',
       [name,email,notification_email||'',appRole,userRole,bcrypt.hashSync(password,10),phone||null,department||'',week_off||'',extra_off||'',exclVal,accessJson,birthday||null,joining_date||null,req.params.id]);
     else await db.query('UPDATE users SET name=?,email=?,notification_email=?,role=?,user_role=?,phone=?,department=?,week_off=?,extra_off=?,exclude_from_reminder=?,extra_access=?,birthday=?,joining_date=? WHERE id=?',
@@ -3777,6 +3807,7 @@ app.post('/api/users/bulk', requireAuth, requireAdmin, async (req, res) => {
     let added = 0, skipped = 0, errors = [];
     for (const u of users) {
       if (!u.name || !u.email || !u.password) { errors.push(`${u.email||'?'}: missing fields`); continue; }
+      if (passwordProblem(u.password)) { errors.push(`${u.email}: ${passwordProblem(u.password)}`); continue; }
       const [ex] = await db.query('SELECT id FROM users WHERE email=?', [u.email]);
       if (ex[0]) { skipped++; continue; }
       const appRole = validRoles.includes(u.role) ? u.role : 'user';
@@ -3963,6 +3994,7 @@ app.put('/api/profile', requireAuth, async (req, res) => {
     const { name, email, notification_email, phone, birthday, joining_date, currentPassword, newPassword, profileImage } = req.body;
     // Checked before any write, so a bad photo cannot leave the other fields half-saved.
     if (profileImage !== undefined && !isStorableProfileImage(profileImage)) return res.status(400).json({ error: 'Profile photo must be an image file' });
+    if (newPassword && passwordProblem(newPassword)) return res.status(400).json({ error: passwordProblem(newPassword) });
     // The login email is what "forgot password" sends the reset code to, so
     // changing it without the password would let a stolen session take the
     // account over for good. Unchanged email → no password needed, as before.
@@ -7708,7 +7740,7 @@ app.put('/api/client-portal/password', requireAuth, async (req, res) => {
   try {
     if (req.session.role !== 'client') return res.status(403).json({ error: 'Client portal only' });
     const { currentPassword, newPassword } = req.body || {};
-    if (!newPassword || String(newPassword).length < 6) return res.status(400).json({ error: 'New password must be at least 6 characters' });
+    if (passwordProblem(newPassword)) return res.status(400).json({ error: passwordProblem(newPassword) });
     const [[u]] = await db.query('SELECT password FROM users WHERE id=?', [req.session.userId]);
     if (!u) return res.status(404).json({ error: 'User not found' });
     if (!currentPassword || !bcrypt.compareSync(currentPassword, u.password)) return res.status(400).json({ error: 'Current password is incorrect' });

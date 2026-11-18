@@ -1124,7 +1124,7 @@ function cpRenderProfile(s, me){
         <div style="padding:18px 20px">
           <div class="alert error" id="cpPwErr" style="display:none;margin-bottom:12px"></div>
           <div class="form-group"><label>Current Password</label><input type="password" id="cpPwCurrent" placeholder="••••••••"/></div>
-          <div class="form-group"><label>New Password</label><input type="password" id="cpPwNew" placeholder="At least 6 characters"/></div>
+          <div class="form-group"><label>New Password</label><input type="password" id="cpPwNew" placeholder="At least 8 characters"/></div>
           <div class="form-group" style="margin-bottom:16px"><label>Confirm New Password</label><input type="password" id="cpPwConfirm" placeholder="Re-enter new password"/></div>
           <button class="btn btn-primary" style="width:100%" onclick="cpChangePassword()">Update Password</button>
         </div>
@@ -1140,7 +1140,7 @@ async function cpChangePassword(){
   const newPassword     = document.getElementById('cpPwNew').value;
   const confirm         = document.getElementById('cpPwConfirm').value;
   if (!currentPassword) { err.textContent = 'Enter your current password'; err.style.display = 'block'; return; }
-  if (!newPassword || newPassword.length < 6) { err.textContent = 'New password must be at least 6 characters'; err.style.display = 'block'; return; }
+  if (!newPassword || newPassword.length < 8) { err.textContent = 'New password must be at least 8 characters'; err.style.display = 'block'; return; }
   if (newPassword !== confirm) { err.textContent = 'New passwords do not match'; err.style.display = 'block'; return; }
   const r = await api('/api/client-portal/password', 'PUT', { currentPassword, newPassword });
   if (r.error) { err.textContent = r.error; err.style.display = 'block'; return; }

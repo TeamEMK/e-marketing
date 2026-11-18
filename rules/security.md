@@ -20,19 +20,19 @@ may do what is covered in [permissions.md](permissions.md); this file covers
 | AU-1 | Login checks a bcrypt hash (`bcrypt.compareSync`). Passwords are stored as bcrypt with cost 10. | Implemented | `server.js:1776-1777`, `3375` |
 | AU-2 | The session is a **stateless JWT** `{userId, role, name}` signed with `SESSION_SECRET` and valid for **7 days**. | Implemented | `server.js:1783-1787` |
 | AU-3 | It is sent in the cookie `token` with `httpOnly`, `sameSite: 'lax'` and a 7-day `maxAge`. `secure` is set **only when `NODE_ENV === 'production'`**. | Implemented | `server.js:1788-1794`, `2006-2013` |
-| AU-4 | `/api/login` **also returns the JWT in the JSON body**. The current login page ignores it and deletes any old `localStorage` copy. | Implemented | `server.js:1795`; `public/index.html:1000-1004`, `public/js/core.js:285-292` |
+| AU-4 | `/api/login` answers `{id, name, email, role}` only; the JWT travels in the httpOnly cookie alone (removed from the body 2026-11-18). The login page keeps no copy and deletes any old `localStorage` one. | Implemented | `server.js` POST /api/login; `public/index.html:1013-1016`, `public/js/core.js:285-292` |
 | AU-5 | `requireAuth` also accepts `Authorization: Bearer <token>`. | Implemented | `server.js:1047` |
 | AU-6 | The **role is re-read from the database** on each request (30 s cache, cleared when the role changes). A deleted user's token is rejected. | Implemented | `server.js:1018-1060`, `3414`, `3501`, `3677` |
 | AU-7 | The `name` in the session still comes from the token, so it is stale until the next login. | Implemented | `server.js:1061-1066` |
 | AU-8 | If the database role lookup errors, the request uses the role **inside the token** (fail-open by design). | Implemented | `server.js:1030-1037` |
 | AU-9 | **Logout only clears the cookie.** Nothing revokes a token on the server, so a copied token works until it expires (7 days; 1 day when impersonating). | Implemented (gap) | `server.js:1799-1802` |
 | AU-10 | **Login throttle per email:** 10 failures within 15 min lock that email for 15 min, even for the correct password. Emails that do not exist are counted too. State lives in the `login_attempts` table. Any database error **fails open**. | Implemented | `server.js:1700-1761`, `1767-1773` |
-| AU-11 | **Per-IP limits** on the unauthenticated auth routes: login 30 failed (401) attempts per 15 min, forgot-password 10 per 15 min, reset 20 failed attempts per 15 min. They are kept in memory per server instance and keyed on the first `X-Forwarded-For` value. | Implemented | `server.js:60-90` |
-| AU-12 | Whether the `X-Forwarded-For` value can be spoofed past Vercel's proxy cannot be told from the repository. | Unknown | `server.js:71` |
+| AU-11 | **Per-IP limits** on the unauthenticated auth routes: login 30 failed (401) attempts per 15 min, forgot-password 10 per 15 min, reset 20 failed attempts per 15 min. They are kept in memory per server instance and keyed on `clientIp(req)`. | Implemented | `server.js` `clientIp`, `ipLimit` |
+| AU-12 | `clientIp` (2026-11-18): on Vercel it reads the platform's `X-Vercel-Forwarded-For` / `X-Real-IP` (Vercel overwrites `X-Forwarded-For`); off Vercel only the socket address, so a client-sent header cannot give each try a new key. Tested locally: 30 failures with a fresh fake `X-Forwarded-For` each, the 31st is 429. The Vercel branch was not run locally. | Implemented | `server.js` `clientIp` |
 | AU-13 | The login query uses the email exactly as typed (`WHERE email = ?`), while the throttle lowercases it. Matching then depends on the database collation. | Inferred | `server.js:1774`, `1715` |
 | AU-14 | **Forgot / reset password** (staff only, never client logins): a 6-digit code from `crypto.randomInt`, stored as a bcrypt hash, valid 10 min, single use, at most 5 wrong tries. The forgot response is the same whether or not the email exists. | Implemented | `server.js:1803-1897` |
 | AU-15 | Changing your login email needs the current password, because the reset code is sent to that email. | Implemented | `server.js:3700-3708` |
-| AU-16 | Minimum password length (6) is enforced **only** on reset and the client-portal password change. Admin-created passwords, bulk-imported passwords and profile password changes have **no length rule**. | Implemented / Missing (inconsistent) | `server.js:1872`, `7296` versus `3362-3375`, `3507-3525`, `3709-3712` |
+| AU-16 | Every new password must be **8+ characters** (`backend/password-rule.js`, 2026-11-18): reset, Profile, client-portal change, Users add / edit / bulk (bulk skips the row with a reason), and Client Master's client login (checked before the client is saved). Existing passwords are not re-checked and still sign in. | Implemented | `backend/password-rule.js`; `server.js`, `backend/routes/clients.js` |
 | AU-17 | An admin can set any user's password without knowing the old one (`PUT /api/users/:id`). | Implemented | `server.js:3410-3411` |
 | AU-18 | **A new user's password is emailed to them in plain text.** | Implemented | `server.js:3376-3379` |
 | AU-19 | If the `users` table is empty at startup, a **default admin with a fixed password** is created (the email and password are literals in `server.js`). `/api/setup` repeats this. `README.md` documents an older default login. | Implemented | `server.js:879-892`, `1660-1675`; `README.md:11`, `205-212` |
@@ -64,7 +64,7 @@ scanning all 282 route definitions in `server.js` and `backend/routes/*.js`.
 | `GET /api/wa-delegation/approve/:token`, `/deny/:token` | A 32-byte random token. **These GET requests change data** (approve or deny a task). They can only be decided once. | Implemented / Inferred (link prefetchers could trigger them) | `server.js:5195-5250`, `5157` |
 | `GET /api/theme/public` | Returns only the theme name and Navratri day. | Implemented | `server.js:9653-9662` |
 | `GET /offer/:token`, `/offer-pdf/:token`, `/offer-pdf-prelim/:token` | 24-byte random capability tokens. **No expiry was found.** | Implemented / Missing (expiry) | `backend/routes/hrm.js:255`, `713-790` |
-| `POST /api/hrm/joining-form` | Shared secret (`x-hrm-form-secret` or body) **plus** a per-candidate token. The secret falls back to a **literal in source** when `HRM_JOINING_FORM_SECRET` is unset, and there is **no closed-if-unset guard**, unlike the cron, bot and setup routes. Plain string comparison. | Implemented / Missing (fail-closed) | `backend/routes/hrm.js:60`, `797-801`, `815-818` |
+| `POST /api/hrm/joining-form` | Shared secret (`x-hrm-form-secret` or body) **plus** a per-candidate token. Closed when `HRM_JOINING_FORM_SECRET` is unset (no literal fallback since 2026-11-18); timing-safe comparison. | Implemented | `backend/routes/hrm.js:59-63`, `860-866` |
 | `GET /`, `/app`, `/client`, static `public/` | Static pages; every data call they make is authenticated. | Implemented | `server.js:91`, `10252-10259` |
 
 ---
@@ -125,8 +125,8 @@ points:
 |---|---|---|---|
 | SC-1 | `.env`, `.env.local`, `credentials.json`, `brain.md` and `local/` are gitignored and not tracked. | Implemented | `.gitignore:6-12`, `36`, `57`; `git ls-files` |
 | SC-2 | **`README.md` (tracked) contains the database host, user and password in plain text.** Whether they are still valid is unknown. | Implemented (exposure) / Unknown (validity) | `README.md:62-64` |
-| SC-3 | `JWT_SECRET` is `SESSION_SECRET` or, if that is unset, a literal string. If the variable is missing, tokens are signed with a value published in the source, and the app still starts. | Implemented | `server.js:17` |
-| SC-4 | `HRM_JOINING_FORM_SECRET` has a literal fallback and no unset guard (see §2). | Implemented | `backend/routes/hrm.js:60` |
+| SC-3 | `JWT_SECRET` is `SESSION_SECRET` only. Live (Vercel or `NODE_ENV=production`) without it, the server refuses to start; locally it uses a random secret per run. The old literal fallback is gone (2026-11-18), so a token signed with it is refused. | Implemented | `server.js:17-29` |
+| SC-4 | `HRM_JOINING_FORM_SECRET` has no fallback: unset, the joining-form webhook refuses every submission; set, it is compared with `crypto.timingSafeEqual` (2026-11-18). | Implemented | `backend/routes/hrm.js:59-63`, `860-866` |
 | SC-5 | The **untracked** `employee-form/Code.gs` contains a hardcoded portal secret for the joining-form webhook. It is not in git yet, but it is not ignored either. | Implemented (exposure risk if committed) | `employee-form/Code.gs:14-15`; `git status` |
 | SC-6 | The cron routes' literal fallback for `CRON_SECRET` is never used, because each route first refuses when the variable is unset. `BOT_API_KEY` and `WAUMFY_API_KEY` have no literal fallback. | Implemented | `server.js:5742-5745`, `5146-5150`, `4978-4979` |
 | SC-7 | Hardcoded identifiers in source: WhatsApp group ids, a phone number, Google Sheet, Drive and Apps Script ids and URLs, and production user ids. | Implemented | `server.js:3388-3390`, `5344-5347`, `6752-6753`, `7832-7836`, `8929`, `8936`, `9792`; `backend/routes/hrm.js:39-47`; `backend/routes/leads.js:40-50`; `backend/routes/clients.js:50-51`; `public/js/mdo.js:1215-1217` |
@@ -197,9 +197,9 @@ points:
 
 | # | Finding | Status | Evidence |
 |---|---|---|---|
-| SX-1 | The cron, bot and setup secrets **fail closed** when unset; the HRM joining-form secret **falls back to a literal in source**. | Implemented (inconsistent) | `server.js:5743`, `5147`, `1507` versus `backend/routes/hrm.js:60`, `801` |
-| SX-2 | The bot key uses a constant-time comparison; the cron, setup and joining-form secrets use plain `!==`. | Implemented (inconsistent) | `server.js:5148-5149` versus `5743`, `1507`, `hrm.js:801` |
-| SX-3 | The login page deliberately keeps no token in JavaScript, yet `/api/login` still returns it in the body. | Implemented (inconsistent) | `server.js:1795`; `public/index.html:1000-1004` |
+| SX-1 | The cron, bot, setup and HRM joining-form secrets all **fail closed** when unset (the joining-form literal fallback was removed 2026-11-18). | Implemented | `server.js:5743`, `5147`, `1507`; `backend/routes/hrm.js:59-63` |
+| SX-2 | The bot key and the joining-form secret use a constant-time comparison; the cron and setup secrets use plain `!==`. | Implemented (inconsistent) | `server.js:5148-5149`, `hrm.js:860-866` versus `5743`, `1507` |
+| SX-3 | No token in JavaScript anywhere: the login page keeps none and `/api/login` no longer returns one (2026-11-18). `requireAuth` still accepts an `Authorization: Bearer` header, which nothing in the app or its sibling projects uses. | Implemented | `server.js` POST /api/login, `requireAuth`; `public/index.html:1013-1016` |
 | SX-4 | Password length is checked on two flows only (AU-16). | Missing (inconsistent) | see AU-16 |
 | SX-5 | A comment in `GET /api/users` says permissions are hidden from non-admins, but `user_permissions` is still returned. | Implemented (contradiction) | `server.js:3318-3328`, `3337-3348` |
 | SX-6 | Tracked documentation holds live-looking database credentials (SC-2), and an untracked script holds a production webhook secret (SC-5). | Implemented | `README.md:62-64`; `employee-form/Code.gs:15` |
