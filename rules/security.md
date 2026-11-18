@@ -142,7 +142,7 @@ points:
 | # | Finding | Status | Evidence |
 |---|---|---|---|
 | DP-1 | User passwords and reset codes are bcrypt hashes. | Implemented | `server.js:3375`, `1847` |
-| DP-2 | **The client credentials vault stores passwords in plain text** ("stored as typed so they can be read back"). All four routes are admin-only, and the list returns the passwords. | Implemented | `server.js:7598-7720` |
+| DP-2 | The client credentials vault stores passwords **encrypted** (AES-256-GCM, `backend/secret-box.js`, key `CREDENTIALS_ENCRYPTION_KEY`, values `enc:v1:…`, 2026-11-18). Opening the vault with the key set encrypts any old plain value in place. Without the key: old plain values still read, encrypted ones show as locked, and every save that carries a password, and every edit, is refused (503) so nothing is written in plain text or blanked. All four routes stay admin-only and the list returns the decrypted passwords. | Implemented | `server.js` `/api/client-credentials*`, `backend/secret-box.js` |
 | DP-3 | Deleted rows are kept as full JSON in `deleted_records` for 60 days. That includes **user password hashes and reset-code fields**, and **plaintext vault passwords** when a credential is deleted. Admins can read them through the Logs page. | Inferred | `server.js:1197-1232`, `3496-3497`, `7711-7712`, `10149-10160`, `10213` |
 | DP-4 | **Credit card statements (images or text) are sent to the OpenAI API** for parsing. Only masked card numbers are stored. The original statement PDF is stored in the database. | Implemented | `backend/routes/credit-cards.js:118-125`, `747-822`, `782-790` |
 | DP-5 | Candidate joining details (guardians, address, Aadhaar and PAN files through Google Drive) are collected by the Apps Script form and posted to the app. | Implemented | `employee-form/Code.gs:1-25`, `105-120`; `backend/routes/hrm.js:797-907` |
@@ -203,7 +203,7 @@ points:
 | SX-4 | Password length is checked on two flows only (AU-16). | Missing (inconsistent) | see AU-16 |
 | SX-5 | A comment in `GET /api/users` says permissions are hidden from non-admins, but `user_permissions` is still returned. | Implemented (contradiction) | `server.js:3318-3328`, `3337-3348` |
 | SX-6 | Tracked documentation holds live-looking database credentials (SC-2), and an untracked script holds a production webhook secret (SC-5). | Implemented | `README.md:62-64`; `employee-form/Code.gs:15` |
-| SX-7 | Plaintext vault passwords (DP-2), and they are also copied into the delete archive (DP-3). | Implemented / Inferred | `server.js:7598-7720`, `7711` |
+| SX-7 | Vault passwords are encrypted now (DP-2), and a credential deleted from now on is archived encrypted. Credentials deleted **before** 2026-11-18 sit in `deleted_records` with plain passwords until the retention purge removes them. | Implemented / Inferred | `server.js` vault routes, DP-3 |
 | SX-8 | Offer-letter HTML is unescaped and public (OE-4); task URLs have no scheme check (OE-3). | Inferred | see OE-3, OE-4 |
 | SX-9 | No token revocation, no MFA, no CSP, no SRI (AU-9, AU-20, OE-6, OE-7). | Missing | see the rows cited |
 | SX-10 | Whether production environment variables are set safely (SC-11), and whether the README credentials are still valid (SC-2). | Unknown | — |

@@ -8129,6 +8129,38 @@ function ensureClientCredentialsTable(){
   return _ccVaultReady;
 }
 
+// Passwords in the vault are stored encrypted (backend/secret-box.js). The column
+// was VARCHAR(500), too short once a 500-character password is encrypted, so it
+// becomes TEXT — once, and only if it is not TEXT already.
+const secretBox = require('./backend/secret-box');
+let _ccVaultTextCol = null;
+function ensureVaultPasswordText() {
+  if (!_ccVaultTextCol) _ccVaultTextCol = (async () => {
+    const [[col]] = await db.query(
+      `SELECT DATA_TYPE AS t FROM information_schema.COLUMNS
+        WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME='client_credentials' AND COLUMN_NAME='password'`);
+    if (col && String(col.t).toLowerCase() !== 'text') await db.query('ALTER TABLE client_credentials MODIFY COLUMN password TEXT NULL');
+  })().catch(e => { _ccVaultTextCol = null; throw e; });
+  return _ccVaultTextCol;
+}
+// Encrypts the passwords saved before encryption existed. Runs when the vault
+// is opened with the key set; later calls find nothing left to do.
+async function sealOldVaultPasswords() {
+  if (!secretBox.hasKey()) return 0;
+  const [rows] = await db.query(
+    "SELECT id, password FROM client_credentials WHERE password IS NOT NULL AND password <> '' AND password NOT LIKE 'enc:v1:%'");
+  for (const r of rows) {
+    await db.query('UPDATE client_credentials SET password=? WHERE id=? AND password=?', [secretBox.seal(r.password), r.id, r.password]);
+  }
+  if (rows.length) console.log(`  🔒 Vault: encrypted ${rows.length} stored password(s)`);
+  return rows.length;
+}
+// The vault answers a save without the key with this, rather than writing a
+// password in plain text or blanking one it cannot read.
+function vaultKeyMissing(res) {
+  return res.status(503).json({ error: 'The vault cannot save right now: CREDENTIALS_ENCRYPTION_KEY is not set on the server.' });
+}
+
 // List every stored credential, newest system first, with the client name
 // joined in so the vault can group by client. Optional ?client_id= narrows it.
 app.get('/api/client-credentials', requireAuth, requireAdmin, async (req, res) => {
@@ -8145,7 +8177,15 @@ app.get('/api/client-credentials', requireAuth, requireAdmin, async (req, res) =
          LEFT JOIN clients c ON cc.client_id = c.id
          ${where}
          ORDER BY client_name ASC, cc.system_name ASC, cc.role_label ASC, cc.id ASC`, params);
-    res.json(rows);
+    // Old plain passwords get encrypted in place; this answer is read from the
+    // rows already fetched, so it is the same either way.
+    await ensureVaultPasswordText().then(sealOldVaultPasswords)
+      .catch(e => console.error('[client-credentials:seal]', e.message));
+    // locked: encrypted, and this server has no key (or a different one) to open it.
+    res.json(rows.map(r => {
+      const o = secretBox.open(r.password);
+      return o.locked ? { ...r, password: null, password_locked: true } : { ...r, password: o.value };
+    }));
   } catch (err) { ccVaultErr(res, err, 'list'); }
 });
 
@@ -8160,12 +8200,15 @@ app.post('/api/client-credentials', requireAuth, requireAdmin, async (req, res) 
     const [[c]] = await db.query('SELECT id FROM clients WHERE id=?', [clientId]);
     if (!c) return res.status(404).json({ error: 'Client not found' });
     const clean = (v, n) => { const s = (v == null ? '' : String(v)).trim(); return s ? s.slice(0, n) : null; };
+    const password = clean(req.body.password, 500);
+    if (password && !secretBox.hasKey()) return vaultKeyMissing(res);
+    await ensureVaultPasswordText();
     const [r] = await db.query(
       `INSERT INTO client_credentials
          (client_id, system_name, role_label, url, username, password, notes, created_by, created_by_name)
        VALUES (?,?,?,?,?,?,?,?,?)`,
       [clientId, system.slice(0, 255), clean(req.body.role_label, 100), clean(req.body.url, 1000),
-       clean(req.body.username, 500), clean(req.body.password, 500), clean(req.body.notes, 5000),
+       clean(req.body.username, 500), secretBox.seal(password), clean(req.body.notes, 5000),
        req.session.userId, req.session.name || null]);
     res.json({ success: true, id: r.insertId });
   } catch (err) { ccVaultErr(res, err, 'add'); }
@@ -8179,12 +8222,22 @@ app.put('/api/client-credentials/:id', requireAuth, requireAdmin, async (req, re
     const system = String(req.body.system_name || '').trim();
     if (!system) return res.status(400).json({ error: 'System name is required' });
     const clean = (v, n) => { const s = (v == null ? '' : String(v)).trim(); return s ? s.slice(0, n) : null; };
+    // Without the key the list showed this password blank, so saving the form
+    // would wipe it: edits wait for the key.
+    if (!secretBox.hasKey()) return vaultKeyMissing(res);
+    await ensureVaultPasswordText();
+    const [[cur]] = await db.query('SELECT password FROM client_credentials WHERE id=?', [id]);
+    if (!cur) return res.status(404).json({ error: 'Credential not found' });
+    let password = clean(req.body.password, 500);
+    // Sealed with a key this server does not hold: a blank box means "not
+    // shown", never "remove it" — the stored value stays.
+    if (!password && secretBox.isEncrypted(cur.password) && secretBox.open(cur.password).locked) password = cur.password;
     const [r] = await db.query(
       `UPDATE client_credentials
           SET system_name=?, role_label=?, url=?, username=?, password=?, notes=?
         WHERE id=?`,
       [system.slice(0, 255), clean(req.body.role_label, 100), clean(req.body.url, 1000),
-       clean(req.body.username, 500), clean(req.body.password, 500), clean(req.body.notes, 5000), id]);
+       clean(req.body.username, 500), secretBox.seal(password), clean(req.body.notes, 5000), id]);
     if (!r.affectedRows) return res.status(404).json({ error: 'Credential not found' });
     res.json({ success: true });
   } catch (err) { ccVaultErr(res, err, 'edit'); }

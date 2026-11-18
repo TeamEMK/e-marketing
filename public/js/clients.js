@@ -44,7 +44,7 @@ function cmApplyRoleControls(){
   // and for anyone given the "Add Client & Bulk Upload" tick in Access Control
   // (add_clients) along with Client Master at the Editor level.
   const show = ME.role === 'admin' || (cmCanEdit() && canDo('add_clients')) ? '' : 'none';
-  // The Credentials Vault holds plaintext passwords, so the tab is admin-only.
+  // The Credentials Vault holds client passwords (encrypted at rest, readable here), so the tab is admin-only.
   if (!_cmTabsReact({ vault: ME.role === 'admin' })) {   // React tabs (CmTabs.jsx) take it as a flag
     const vaultBtn = document.getElementById('cmTabVaultBtn');
     if (vaultBtn) vaultBtn.style.display = (ME.role === 'admin') ? '' : 'none';
@@ -222,6 +222,11 @@ function cvRender(){
           <span id="cvPw${c.id}" data-shown="0" data-pw="${dtEscape(c.password)}" style="flex:1;word-break:break-all;color:#0f172a;font-family:monospace">••••••••</span>
           <button class="cm-btn-ghost" style="padding:2px 8px;font-size:11px" onclick="cvTogglePw(${c.id})" id="cvPwBtn${c.id}">👁 Show</button>
           <button class="cm-btn-ghost" style="padding:2px 8px;font-size:11px" onclick="cvCopy(${JSON.stringify(c.password).replace(/"/g,'&quot;')},'Password')">📋</button>
+        </div>` : ''}
+      ${c.password_locked ? `
+        <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:13px">
+          <span style="min-width:70px;color:#64748b;font-weight:600">Password</span>
+          <span style="color:#b45309">🔒 Saved, but locked: the server's encryption key is missing</span>
         </div>` : ''}
       ${c.notes ? `<div style="margin-top:6px;font-size:12px;color:#64748b;white-space:pre-wrap">${dtEscape(c.notes)}</div>` : ''}
     </div>`;

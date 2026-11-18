@@ -43,6 +43,13 @@ function Card({ c }) {
           <button className="cm-btn-ghost" ref={css(GHOST_SM)} onClick={() => legacy('cvCopy', c.password, 'Password')}>📋</button>
         </div>
       ) : null}
+      {/* Stored encrypted, and this server has no key (or another one) to open it. */}
+      {c.password_locked ? (
+        <div ref={css(ROW)}>
+          <span ref={css(KEY)}>Password</span>
+          <span ref={css('color:#b45309')}>🔒 Saved, but locked: the server's encryption key is missing</span>
+        </div>
+      ) : null}
       {c.notes ? <div ref={css('margin-top:6px;font-size:12px;color:#64748b;white-space:pre-wrap')}>{c.notes}</div> : null}
     </div>
   );
