@@ -66,9 +66,96 @@ app.use(helmet({
   crossOriginEmbedderPolicy: false,
 }));
 
+// ── Content-Security-Policy, REPORT-ONLY for now (2026-11-18) ─────────────
+// The baseline the app can live with today. It lists every outside origin the
+// pages use: cdnjs for Chart.js/jsPDF, Google Fonts, Apps Script (bill and card
+// uploads; it answers from script.googleusercontent.com), and Drive/Docs in the
+// offer-letter previews. Anything else would be refused: a script from an unknown
+// host, <object>/<embed>, a changed <base>, a form posting off-site, or another
+// site framing this one.
+// Report-Only: the browser blocks nothing yet, it only posts what it WOULD have
+// blocked to /api/csp-report. Once a few days of reports come back clean (see
+// GET /api/admin/csp-reports), the header name changes to Content-Security-Policy.
+// 'unsafe-inline' stays in script-src because app.html is built on inline
+// onclick handlers; taking it out is the refactor described above helmet.
+const CSP_POLICY = [
+  "default-src 'self'",
+  "script-src 'self' 'unsafe-inline' https://cdnjs.cloudflare.com",
+  "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com",
+  "font-src 'self' https://fonts.gstatic.com data:",
+  "img-src 'self' data: blob: https:",
+  "connect-src 'self' https://script.google.com https://script.googleusercontent.com",
+  "frame-src 'self' blob: data: https://drive.google.com https://docs.google.com",
+  "media-src 'self' blob: data:",
+  "worker-src 'self' blob:",
+  "manifest-src 'self'",
+  "object-src 'none'",
+  "base-uri 'self'",
+  "form-action 'self'",
+  "frame-ancestors 'self'",
+  'report-uri /api/csp-report',
+].join('; ');
+app.use((req, res, next) => { res.setHeader('Content-Security-Policy-Report-Only', CSP_POLICY); next(); });
+
+// Where browsers post what the policy above would have blocked. No login: the
+// browser sends these on its own. Each server instance writes a distinct report
+// (directive + what was blocked + where) once — `hits` counts the instances that
+// saw it, not every page view — and stops after 500 distinct ones, so a page that trips the policy on every
+// click cannot turn into a stream of database writes. Query strings are cut off
+// URLs before they are kept, so no token in a link ends up in this table.
+const _cspSeen = new Set();
+let _cspTableReady = null;
+const cspUrl = u => String(u || '').split(/[?#]/)[0].slice(0, 500);
+app.post('/api/csp-report',
+  express.json({ type: ['application/csp-report', 'application/reports+json', 'application/json'], limit: '16kb' }),
+  async (req, res) => {
+    res.status(204).end();
+    try {
+      const list = Array.isArray(req.body) ? req.body.map(r => r && r.body).filter(Boolean) : [req.body && req.body['csp-report']].filter(Boolean);
+      for (const r of list.slice(0, 20)) {
+        const directive = String(r['effective-directive'] || r.effectiveDirective || r['violated-directive'] || '').slice(0, 100);
+        const blocked = cspUrl(r['blocked-uri'] || r.blockedURL);
+        const source = cspUrl(r['source-file'] || r.sourceFile);
+        const line = parseInt(r['line-number'] || r.lineNumber, 10) || null;
+        const page = cspUrl(r['document-uri'] || r.documentURL);
+        const sample = String(r['script-sample'] || r.sample || '').slice(0, 200);
+        const key = require('crypto').createHash('sha1').update([directive, blocked, source, line].join('|')).digest('hex');
+        if (_cspSeen.has(key) || _cspSeen.size >= 500) continue;
+        _cspSeen.add(key);
+        if (!_cspTableReady) _cspTableReady = db.query(`CREATE TABLE IF NOT EXISTS csp_reports (
+            id INT AUTO_INCREMENT PRIMARY KEY, report_key CHAR(40) NOT NULL UNIQUE,
+            directive VARCHAR(100), blocked VARCHAR(500), source_file VARCHAR(500), line_no INT,
+            page VARCHAR(500), sample VARCHAR(200), hits INT NOT NULL DEFAULT 1,
+            first_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+            last_seen TIMESTAMP DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP
+          ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4`).catch(e => { _cspTableReady = null; throw e; });
+        await _cspTableReady;
+        await db.query(
+          `INSERT INTO csp_reports (report_key, directive, blocked, source_file, line_no, page, sample)
+           VALUES (?,?,?,?,?,?,?) ON DUPLICATE KEY UPDATE hits = hits + 1, page = VALUES(page)`,
+          [key, directive, blocked, source, line, page, sample]);
+      }
+    } catch (e) { console.error('csp-report:', e.message); }
+  });
+
 app.use(cookieParser());
 app.use(express.json({ limit: '10mb' }));
 app.use(express.urlencoded({ extended: true, limit: '10mb' }));
+
+// What the Report-Only CSP (above) would have blocked, most frequent first (admins).
+// Registered after cookieParser: requireAuth reads the session cookie.
+app.get('/api/admin/csp-reports', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT directive, blocked, source_file, line_no, page, sample, hits,
+              DATE_FORMAT(first_seen, '%Y-%m-%d %H:%i') AS first_seen, DATE_FORMAT(last_seen, '%Y-%m-%d %H:%i') AS last_seen
+         FROM csp_reports ORDER BY hits DESC, last_seen DESC LIMIT 300`);
+    res.json({ policy: CSP_POLICY, reports: rows });
+  } catch (err) {
+    if (err.code === 'ER_NO_SUCH_TABLE') return res.json({ policy: CSP_POLICY, reports: [] });
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // Per-IP limits on the routes anyone can reach without logging in. Each
 // request that gets through costs database work, and the production database
