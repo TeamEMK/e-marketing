@@ -118,7 +118,13 @@ function TaskLine({ t, n, v }) {
     <tr onClick={() => { if (t.id) legacy('openTaskDetail', t); }} ref={css('cursor:pointer')} title="Click to view details">
       <td className="amb-cell dash-num">{n}</td>
       <td ref={css('white-space:nowrap')}><TypeBadge t={t} /></td>
-      <td ref={css('max-width:240px;word-break:break-word')}>{t.description || t.desc || ''}</td>
+      <td ref={css('max-width:240px;word-break:break-word')}>
+        {t.description || t.desc || ''}
+        {/* Moved here when its doer was deactivated (Users → Deactivate). */}
+        {t.transferred_from_name
+          ? <span ref={css('margin-left:6px;font-size:10px;color:#7c3aed;font-weight:700;background:#ede9fe;padding:1px 6px;border-radius:8px;white-space:nowrap')} title="This task moved here when its doer was deactivated">{`↪ from ${t.transferred_from_name}`}</span>
+          : null}
+      </td>
       <td>{((isAdmin || isPC) ? t.assignedToName : t.assignedByName) || ''}</td>
       <td>
         {awaitingDate

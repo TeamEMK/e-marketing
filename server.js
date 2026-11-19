@@ -2475,8 +2475,10 @@ app.get('/api/dashboard', requireAuth, async (req, res) => {
       ? 'ORDER BY t.due_date IS NULL, t.due_date DESC, t.id DESC'
       : 'ORDER BY t.due_date ASC';
     // The row queries, by status clause and order, so the revised rows below run the same ones.
-    const delRows = (statusClause, order) => db.query(`SELECT t.id,'delegation' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.no_due_date_reason,t.remarks,t.url,t.client_id,COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${statusClause} ${delDateClause} ${userFilter} ${order} LIMIT 500`, delParams).then(r => r[0]);
-    const chlRows = (statusClause, order) => db.query(`SELECT t.id,'checklist' AS type,t.description,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,NULL AS completed_on,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${statusClause} ${chlDateClause} ${userFilter} ${order} LIMIT 500`, chlParams).then(r => r[0]);
+    // transferred_from_name: a deactivated user's task, moved on (added on first use).
+    await ensureTransferredFromCols();
+    const delRows = (statusClause, order) => db.query(`SELECT t.id,'delegation' AS type,t.description,${transferredFromSql()} AS transferred_from_name,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,COALESCE(t.approval,'no') AS approval,COALESCE(t.waiting_approval,0) AS waiting_approval,COALESCE(t.awaiting_due_date,0) AS awaiting_due_date,t.no_due_date_reason,t.remarks,t.url,t.client_id,COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,DATE_FORMAT(t.completed_at,'%Y-%m-%d') AS completed_on,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM delegation_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${statusClause} ${delDateClause} ${userFilter} ${order} LIMIT 500`, delParams).then(r => r[0]);
+    const chlRows = (statusClause, order) => db.query(`SELECT t.id,'checklist' AS type,t.description,${transferredFromSql()} AS transferred_from_name,t.status,t.assigned_to,t.assigned_by,COALESCE(t.priority,'low') AS priority,'no' AS approval,0 AS waiting_approval,0 AS awaiting_due_date,t.remarks,t.client_id,COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name,DATE_FORMAT(t.created_at,'%Y-%m-%d') AS delegated_on,DATE_FORMAT(t.due_date,'%Y-%m-%d') AS due_date,NULL AS completed_on,COALESCE(u1.name,'— deleted user —') AS assignedToName,COALESCE(u2.name,'—') AS assignedByName FROM checklist_tasks t LEFT JOIN users u1 ON t.assigned_to=u1.id LEFT JOIN users u2 ON t.assigned_by=u2.id LEFT JOIN clients c ON t.client_id=c.id WHERE 1=1 ${statusClause} ${chlDateClause} ${userFilter} ${order} LIMIT 500`, chlParams).then(r => r[0]);
     if (taskType === 'delegation' || taskType === 'both') delegationRows = await delRows(rowStatusClause, delOrder);
     if (taskType === 'checklist' || taskType === 'both') checklistRows = await chlRows(rowStatusClause, chlOrder);
     // withRevised=1 on the pending load: the revised rows come in the same
@@ -2522,6 +2524,8 @@ require('./backend/routes/tasks')(app, {
   waTextToEmailHtml,
   canTouchSubtasks,
   canSeeTask,
+  ensureTransferredFromCols,
+  transferredFromSql,
 });
 
 // ── Sub-tasks: follow-up asks nested under a delegation task (e.g. client says
@@ -3869,6 +3873,158 @@ app.post('/api/admin/send-birthday-reminder', requireAuth, requireAdmin, async (
   try {
     await sendWhatsAppRaw('919602694444-1618492040@g.us', msg);
     res.json({ ok: true });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Deactivate a user (Users page) ───────────────────────────────────────
+// Their pending delegation and checklist tasks move to someone chosen, each
+// keeping the old doer's name in transferred_from_name (the lists show
+// "↪ from <name>"), and then the user goes exactly as a delete always has:
+// archived in deleted_records — restorable from Logs, and past the retention
+// window still kept as name and email, so old tasks keep showing who did them —
+// and removed from users, which takes them off every picker, reminder, cron and
+// report at once (the users table is read in some 180 places; a "disabled" flag
+// would have to be taught to every one of them).
+let _fromColsReady = false, _fromColsPromise = null;
+function ensureTransferredFromCols() {
+  if (_fromColsReady) return Promise.resolve(true);
+  if (!_fromColsPromise) _fromColsPromise = (async () => {
+    for (const t of ['delegation_tasks', 'checklist_tasks']) {
+      const [cols] = await db.query(`SHOW COLUMNS FROM ${t} LIKE 'transferred_from_name'`);
+      if (!cols.length) {
+        try { await db.query(`ALTER TABLE ${t} ADD COLUMN transferred_from_name VARCHAR(255) NULL`); }
+        catch (e) { if (e.code !== 'ER_DUP_FIELDNAME') throw e; }
+      }
+    }
+    _fromColsReady = true;
+    return true;
+  })().catch(e => { _fromColsPromise = null; console.error('transferred_from_name:', e.message); return false; });
+  return _fromColsPromise;
+}
+// For the task lists' SELECT: the column once it exists, NULL until then.
+function transferredFromSql(alias = 't') { return _fromColsReady ? `${alias}.transferred_from_name` : 'NULL'; }
+const OPEN_DELEGATION_SQL = "status IN ('pending','revised')";
+const OPEN_CHECKLIST_SQL = "status = 'pending'";
+async function openTaskCounts(userId) {
+  const [[d]] = await db.query(`SELECT COUNT(*) AS n FROM delegation_tasks WHERE assigned_to=? AND ${OPEN_DELEGATION_SQL}`, [userId]);
+  const [[c]] = await db.query(`SELECT COUNT(*) AS n FROM checklist_tasks WHERE assigned_to=? AND ${OPEN_CHECKLIST_SQL}`, [userId]);
+  return { delegation: Number(d.n) || 0, checklist: Number(c.n) || 0 };
+}
+// What the Deactivate pop-up says before anything happens.
+app.get('/api/users/:id/open-tasks', requireAuth, requireAdmin, async (req, res) => {
+  try { res.json(await openTaskCounts(parseInt(req.params.id, 10) || 0)); }
+  catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Body: { transfer_to } — required when the person still has pending tasks.
+app.post('/api/users/:id/deactivate', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const id = parseInt(req.params.id, 10) || 0;
+    if (id === Number(req.session.userId)) return res.status(400).json({ error: 'You cannot deactivate yourself' });
+    const [[user]] = await db.query('SELECT * FROM users WHERE id=?', [id]);
+    if (!user) return res.status(404).json({ error: 'User not found' });
+    if (user.role === 'client') return res.status(400).json({ error: 'Client logins are managed in Client Master' });
+    const counts = await openTaskCounts(id);
+    const open = counts.delegation + counts.checklist;
+    let to = null;
+    const moved = { delegation: 0, checklist: 0 };
+    if (open) {
+      const toId = parseInt(req.body && req.body.transfer_to, 10) || 0;
+      if (!toId) return res.status(400).json({ error: `Choose who takes over ${user.name}'s ${open} pending task${open === 1 ? '' : 's'}` });
+      [[to]] = await db.query('SELECT id, name, role FROM users WHERE id=?', [toId]);
+      if (!to || Number(to.id) === id || to.role === 'client') return res.status(400).json({ error: 'Choose an active team member to take over the tasks' });
+      if (!(await ensureTransferredFromCols())) return res.status(500).json({ error: 'Could not prepare the tasks for the move — please try again' });
+      const hist = [];
+      for (const [tbl, type, openSql] of [['delegation_tasks', 'delegation', OPEN_DELEGATION_SQL], ['checklist_tasks', 'checklist', OPEN_CHECKLIST_SQL]]) {
+        const [rows] = await db.query(`SELECT id FROM ${tbl} WHERE assigned_to=? AND ${openSql}`, [id]);
+        if (!rows.length) continue;
+        const ids = rows.map(r => r.id);
+        const [u] = await db.query(`UPDATE ${tbl} SET assigned_to=?, transferred_from_name=? WHERE id IN (?) AND assigned_to=?`, [to.id, user.name, ids, id]);
+        moved[type] = u.affectedRows;
+        ids.forEach(t => hist.push([t, type, null, null, 'assigned_to', String(id), String(to.id), req.session.userId, 'user-deactivated', `${user.name} -> ${to.name} (deactivated)`]));
+      }
+      // One INSERT per 500 for the history: a person can hold hundreds of future checklist dates.
+      for (let i = 0; i < hist.length; i += 500) {
+        await db.query(`INSERT INTO task_activity (task_id, task_type, old_status, new_status, field, old_value, new_value, changed_by, source, note) VALUES ?`, [hist.slice(i, i + 500)])
+          .catch(e => console.error('deactivate history:', e.message));
+      }
+    }
+    await archiveDeleted('users', [user], req, {
+      summary: r => `User deactivated: ${r.name || ''} <${r.email || ''}>`,
+      reason: to ? `Pending tasks moved to ${to.name}` : 'Deactivated',
+    });
+    await db.query('DELETE FROM users WHERE id=?', [id]);
+    invalidateRoleCache(id);
+    res.json({ success: true, moved, to: to ? to.name : null });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// ── Pending tasks of removed accounts (Users → 🧹) ───────────────────────
+// Tasks whose doer's account is gone — deleted before the delete archive kept
+// names, so the lists can only say "— deleted user —". GET lists them by the
+// missing doer (with the name, when the archive still has it, and who gave the
+// tasks); POST removes them the way a single task delete does: archived first
+// (Logs can bring them back), then deleted, with their pending approval requests.
+const ORPHAN_OPEN = { delegation_tasks: "t.status IN ('pending','revised')", checklist_tasks: "t.status = 'pending'" };
+async function orphanTaskRows(doerIds) {
+  const out = {};
+  for (const [tbl, openSql] of Object.entries(ORPHAN_OPEN)) {
+    const only = doerIds && doerIds.length ? ' AND t.assigned_to IN (?)' : '';
+    const [rows] = await db.query(
+      `SELECT t.* FROM ${tbl} t LEFT JOIN users u ON u.id = t.assigned_to
+        WHERE u.id IS NULL AND t.assigned_to IS NOT NULL AND ${openSql}${only}`, only ? [doerIds] : []);
+    out[tbl] = rows;
+  }
+  return out;
+}
+app.get('/api/admin/orphan-tasks', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const rows = await orphanTaskRows();
+    const groups = new Map();
+    const giverIds = new Set();
+    for (const [tbl, list] of Object.entries(rows)) for (const t of list) {
+      const g = groups.get(t.assigned_to) || { doer_id: t.assigned_to, name: null, delegation: 0, checklist: 0, what: new Set(), givers: new Set() };
+      g[tbl === 'delegation_tasks' ? 'delegation' : 'checklist']++;
+      if (g.what.size < 6) g.what.add(String(t.description || '').slice(0, 80));
+      if (t.assigned_by) { g.givers.add(Number(t.assigned_by)); giverIds.add(Number(t.assigned_by)); }
+      groups.set(t.assigned_to, g);
+    }
+    const ids = [...groups.keys()];
+    if (ids.length) {
+      const [arch] = await db.query(`SELECT record_id, record_data FROM deleted_records WHERE source_table='users' AND record_id IN (?)`, [ids]);
+      for (const a of arch) { try { const n = JSON.parse(a.record_data).name; if (n && groups.has(a.record_id)) groups.get(a.record_id).name = n; } catch {} }
+    }
+    const names = {};
+    if (giverIds.size) {
+      const [gv] = await db.query('SELECT id, name FROM users WHERE id IN (?)', [[...giverIds]]);
+      gv.forEach(u => { names[u.id] = u.name; });
+    }
+    res.json({ groups: ids.map(id => {
+      const g = groups.get(id);
+      return { doer_id: id, name: g.name, delegation: g.delegation, checklist: g.checklist,
+        what: [...g.what], given_by: [...g.givers].map(i => names[i] || `#${i} (removed)`) };
+    }) });
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+// Body: { doer_ids: [..] } — only these missing doers; empty means all of them.
+app.post('/api/admin/orphan-tasks/remove', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const doerIds = (Array.isArray(req.body && req.body.doer_ids) ? req.body.doer_ids : [])
+      .map(x => parseInt(x, 10)).filter(n => n > 0);
+    const rows = await orphanTaskRows(doerIds);
+    const removed = { delegation: 0, checklist: 0 };
+    for (const [tbl, list] of Object.entries(rows)) {
+      if (!list.length) continue;
+      const type = tbl === 'delegation_tasks' ? 'delegation' : 'checklist';
+      for (let i = 0; i < list.length; i += 300) {
+        const part = list.slice(i, i + 300);
+        await archiveDeleted(tbl, part, req, { summary: r => `Task: ${r.description || ''}`, reason: 'Doer account no longer exists' });
+        const ids = part.map(r => r.id);
+        const [d] = await db.query(`DELETE FROM ${tbl} WHERE id IN (?)`, [ids]);
+        await db.query(`DELETE FROM task_approvals WHERE task_id IN (?) AND task_type=? AND status='pending'`, [ids, type]);
+        removed[type] += d.affectedRows;
+      }
+    }
+    res.json({ success: true, removed });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 

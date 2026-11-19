@@ -120,7 +120,7 @@ function renderUsersTable(users) {
       </td>
       <td>
         <button class="action-btn edit" onclick="openEditUser(${u.id})">Edit</button>
-        <button class="action-btn delete" style="margin-left:6px" onclick="deleteUser(${u.id})">Delete</button>
+        <button class="action-btn delete" style="margin-left:6px" onclick="deactivateUser(${u.id})">Deactivate</button>
       </td>
     </tr>`;
   }).join('');
@@ -623,11 +623,110 @@ async function sendBirthdayReminder() {
   showToast('✅ Reminder sent to group!');
 }
 
-async function deleteUser(id) {
-  if (!await appConfirm('Delete this user?')) return;
-  const r=await api(`/api/users/${id}`,'DELETE');
-  if (r.error) { appAlert(r.error, 'Error'); return; }
-  loadUsers();
+// Deactivate (was Delete): shows the person's pending tasks, asks who takes them
+// over, then POST /api/users/:id/deactivate. The tasks move with "from <name>" on
+// them, the person can no longer sign in and leaves every list, their name stays
+// on their old tasks, and an admin can bring them back from Logs.
+async function deactivateUser(id) {
+  const u = (allUsersData || []).find(x => Number(x.id) === Number(id));
+  const name = (u && u.name) || 'this user';
+  const counts = await api(`/api/users/${id}/open-tasks`);
+  if (!counts || counts.error) { appAlert((counts && counts.error) || 'Could not read their tasks', 'Error'); return; }
+  const open = (counts.delegation || 0) + (counts.checklist || 0);
+  const others = (allUsersData || []).filter(x => Number(x.id) !== Number(id) && x.role !== 'client')
+    .sort((a, b) => String(a.name || '').localeCompare(String(b.name || '')));
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  document.getElementById('deactOverlay')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'deactOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:20px 22px;width:460px;max-width:100%;box-shadow:0 20px 50px rgba(0,0,0,.25)">
+      <h3 style="margin:0 0 10px;font-size:16px;font-weight:700;color:#0f172a">Deactivate ${dtEscape(name)}</h3>
+      <div id="deactErr" style="display:none;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:10px"></div>
+      ${open ? `
+        <p style="margin:0 0 8px;font-size:13px;color:#334155">${dtEscape(name)} has ${plural(counts.delegation, 'pending delegation task')} and ${plural(counts.checklist, 'pending checklist task')}. They move to:</p>
+        <select id="deactTo" style="width:100%;padding:8px 10px;border:1.5px solid #e2e8f0;border-radius:8px;font-size:13px;font-family:inherit">
+          <option value="">— Choose who takes over —</option>
+          ${others.map(o => `<option value="${o.id}">${dtEscape(o.name)}${o.department ? ' · ' + dtEscape(o.department) : ''}</option>`).join('')}
+        </select>
+        <p style="margin:8px 0 0;font-size:12px;color:#64748b">Each moved task shows “from ${dtEscape(name)}”.</p>`
+      : `<p style="margin:0;font-size:13px;color:#334155">${dtEscape(name)} has no pending tasks.</p>`}
+      <p style="margin:12px 0 0;font-size:12px;color:#64748b">They can no longer sign in and leave every list. Their name stays on their old tasks, and an admin can bring them back from Logs.</p>
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+        <button type="button" id="deactCancel" class="btn btn-outline">Cancel</button>
+        <button type="button" id="deactGo" class="btn" style="background:#dc2626;color:#fff;border:none">Deactivate</button>
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  const fail = m => { const e = document.getElementById('deactErr'); e.textContent = m; e.style.display = 'block'; };
+  ov.querySelector('#deactCancel').onclick = () => ov.remove();
+  ov.querySelector('#deactGo').onclick = async () => {
+    const to = open ? (document.getElementById('deactTo') || {}).value : '';
+    if (open && !to) return fail('Choose who takes over the pending tasks');
+    const btn = ov.querySelector('#deactGo');
+    btn.disabled = true; btn.textContent = 'Deactivating…';
+    const r = await api(`/api/users/${id}/deactivate`, 'POST', { transfer_to: to || null });
+    if (!r || r.error) { btn.disabled = false; btn.textContent = 'Deactivate'; return fail((r && r.error) || 'Could not deactivate'); }
+    ov.remove();
+    const moved = (r.moved && (r.moved.delegation + r.moved.checklist)) || 0;
+    showToast(moved ? `${name} deactivated — ${plural(moved, 'task')} moved to ${r.to}` : `${name} deactivated`);
+    loadUsers();
+  };
+}
+// The old name: the Users rows (and any tab still holding them) call this.
+function deleteUser(id) { return deactivateUser(id); }
+
+// Users → 🧹 Removed users' tasks (admin): pending tasks whose doer's account is
+// gone ("— deleted user —" in the lists), grouped by that doer, with a tick each;
+// Remove archives and deletes the ticked groups' tasks (Logs can bring them back).
+async function openOrphanTasks() {
+  const r = await api('/api/admin/orphan-tasks');
+  if (!r || r.error) { appAlert((r && r.error) || 'Could not read the tasks', 'Error'); return; }
+  const groups = r.groups || [];
+  const plural = (n, w) => `${n} ${w}${n === 1 ? '' : 's'}`;
+  document.getElementById('orphanOverlay')?.remove();
+  const ov = document.createElement('div');
+  ov.id = 'orphanOverlay';
+  ov.style.cssText = 'position:fixed;inset:0;background:rgba(15,23,42,.45);z-index:9999;display:flex;align-items:center;justify-content:center;padding:16px';
+  const rows = groups.map((g, i) => `
+    <label style="display:flex;gap:10px;align-items:flex-start;padding:10px 0;border-bottom:1px solid #f1f5f9;cursor:pointer">
+      <input type="checkbox" class="orphanPick" data-i="${i}" checked style="margin-top:3px;width:15px;height:15px;accent-color:#dc2626">
+      <span style="flex:1;font-size:13px;color:#334155">
+        <b>${g.name ? dtEscape(g.name) + ' (removed)' : 'Removed user #' + g.doer_id + ' · no record left'}</b><br>
+        ${plural(g.delegation, 'pending delegation task')}, ${plural(g.checklist, 'pending checklist task')}
+        ${g.given_by.length ? `<br><span style="color:#64748b">Given by ${g.given_by.map(dtEscape).join(', ')}</span>` : ''}
+        ${g.what.length ? `<br><span style="color:#64748b;font-size:12px">${g.what.map(dtEscape).join(' · ')}</span>` : ''}
+      </span>
+    </label>`).join('');
+  ov.innerHTML = `
+    <div style="background:#fff;border-radius:14px;padding:20px 22px;width:520px;max-width:100%;max-height:85vh;overflow:auto;box-shadow:0 20px 50px rgba(0,0,0,.25)">
+      <h3 style="margin:0 0 6px;font-size:16px;font-weight:700;color:#0f172a">Tasks of removed users</h3>
+      <p style="margin:0 0 8px;font-size:12px;color:#64748b">Pending tasks whose doer's account no longer exists (shown as “— deleted user —”). Removed tasks go to Logs, where they can be restored.</p>
+      <div id="orphanErr" style="display:none;background:#fee2e2;color:#b91c1c;border:1px solid #fecaca;border-radius:8px;padding:8px 10px;font-size:12px;margin-bottom:8px"></div>
+      ${groups.length ? rows : '<p style="font-size:13px;color:#16a34a;margin:10px 0">Nothing to clear: every pending task has a doer.</p>'}
+      <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:16px">
+        <button type="button" id="orphanClose" class="btn btn-outline">Close</button>
+        ${groups.length ? '<button type="button" id="orphanGo" class="btn" style="background:#dc2626;color:#fff;border:none">Remove ticked tasks</button>' : ''}
+      </div>
+    </div>`;
+  document.body.appendChild(ov);
+  ov.querySelector('#orphanClose').onclick = () => ov.remove();
+  const go = ov.querySelector('#orphanGo');
+  if (!go) return;
+  go.onclick = async () => {
+    const picked = [...ov.querySelectorAll('.orphanPick:checked')].map(cb => groups[Number(cb.dataset.i)]);
+    const err = ov.querySelector('#orphanErr');
+    if (!picked.length) { err.textContent = 'Tick at least one'; err.style.display = 'block'; return; }
+    const total = picked.reduce((n, g) => n + g.delegation + g.checklist, 0);
+    if (!await appConfirm(`Remove ${plural(total, 'pending task')} of removed users? They go to Logs, where they can be restored.`, 'Remove tasks')) return;
+    go.disabled = true; go.textContent = 'Removing…';
+    const res = await api('/api/admin/orphan-tasks/remove', 'POST', { doer_ids: picked.map(g => g.doer_id) });
+    if (!res || res.error) { go.disabled = false; go.textContent = 'Remove ticked tasks'; err.textContent = (res && res.error) || 'Could not remove'; err.style.display = 'block'; return; }
+    ov.remove();
+    showToast(`🗑 ${plural(res.removed.delegation + res.removed.checklist, 'task')} removed`);
+    if (typeof loadAllTasks === 'function' && document.getElementById('page-alltasks')?.classList.contains('active')) loadAllTasks();
+  };
 }
 
 // ══════════════════════════════════════════════════════

@@ -126,6 +126,10 @@ function TaskRow({ t, tasksType, isAdmin, showClientCol }) {
       <td ref={css('white-space:nowrap;padding-right:12px')} onClick={stop}>{spaced(actions)}</td>
       <td>
         {t.description || ''}
+        {/* Moved here when its doer was deactivated (Users → Deactivate). */}
+        {t.transferred_from_name
+          ? <span ref={css('margin-left:6px;font-size:10px;color:#7c3aed;font-weight:700;background:#ede9fe;padding:1px 6px;border-radius:8px;white-space:nowrap')} title="This task moved here when its doer was deactivated">{`↪ from ${t.transferred_from_name}`}</span>
+          : null}
         {sDone + sPending > 0
           ? <div ref={css('margin-top:3px')}>{spaced([
               sDone ? <span key="d" ref={css('font-size:10px;color:#15803d;font-weight:700;background:#dcfce7;padding:1px 6px;border-radius:8px')}>{`✅ ${t.subtasks_done} done`}</span> : null,

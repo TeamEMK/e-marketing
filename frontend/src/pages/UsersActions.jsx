@@ -17,7 +17,14 @@ export default function UsersActions() {
     legacy('usersActSetReact', setV);
     return () => legacy('usersActSetReact', null);
   }, []);
-  useLayoutEffect(() => { if (dept.current && v.dept != null) dept.current.style.display = v.dept ? '' : 'none'; });
+  // 🧹 Removed users' tasks: admins only, shown and hidden with 🏷 Departments.
+  const orphan = useRef(null);
+  useLayoutEffect(() => {
+    if (v.dept == null) return;
+    if (dept.current) dept.current.style.display = v.dept ? '' : 'none';
+    if (orphan.current) orphan.current.style.display = v.dept ? '' : 'none';
+  });
+  const orphanRef = useRef(el => { orphan.current = el; if (el && !el._ua) { el._ua = true; el.setAttribute('style', 'display:none'); } }).current;
   const search = useRef(el => {
     if (!el || el._ua) return;
     el._ua = true; el.setAttribute('style', SEARCH);
@@ -31,6 +38,7 @@ export default function UsersActions() {
       <input type="text" id="userSearch" placeholder="Search by name, email, dept, role…" ref={search} />{W}
     </div>{W}
     <button className="btn btn-outline" id="usersDeptBtn" onClick={() => legacy('openDeptManager')} ref={deptRef}>🏷 Departments</button>{W}
+    <button className="btn btn-outline" id="usersOrphanBtn" title="Pending tasks whose doer's account no longer exists" onClick={() => legacy('openOrphanTasks')} ref={orphanRef}>🧹 Removed users' tasks</button>{W}
     <button className="btn btn-primary" onClick={() => legacy('openAddUser')}>+ Add User</button>{'\n'}
     <button className="btn btn-outline" onClick={() => legacy('downloadUsersCSV')} ref={css('display:flex;align-items:center;gap:6px;white-space:nowrap')}>{W2}
       <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4" /><polyline points="7 10 12 15 17 10" /><line x1="12" y1="15" x2="12" y2="3" /></svg>

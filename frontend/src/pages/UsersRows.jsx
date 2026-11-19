@@ -31,7 +31,7 @@ export default function UsersRows() {
         <td>
           <button className="action-btn edit" onClick={() => legacy('openEditUser', u.id)}>Edit</button>
           {' '}
-          <button className="action-btn delete" ref={css('margin-left:6px')} onClick={() => legacy('deleteUser', u.id)}>Delete</button>
+          <button className="action-btn delete" ref={css('margin-left:6px')} onClick={() => legacy('deactivateUser', u.id)}>Deactivate</button>
         </td>
       </tr>
     );

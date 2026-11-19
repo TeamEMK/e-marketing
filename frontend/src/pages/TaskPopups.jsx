@@ -737,6 +737,8 @@ function DetailBody({ d, close }) {
   const rows = [
     ['Description', t.description || ''],
     ['Doer', t.assignedToName || ''],
+    // Moved here when its doer was deactivated (Users → Deactivate).
+    ['Moved From', t.transferred_from_name ? `${t.transferred_from_name} (deactivated)` : null],
     ['Assigned By', by],
     ['Delegated On', fmtDate(t.delegated_on || '')],
     ['Due Date', fmtDate(t.due_date || '')],
