@@ -714,17 +714,52 @@ async function openOrphanTasks() {
   ov.querySelector('#orphanClose').onclick = () => ov.remove();
   const go = ov.querySelector('#orphanGo');
   if (!go) return;
+  // Confirmed inside this pop-up: appConfirm's dialog (z-index 1000) would open
+  // behind it (9999) and the click would seem to do nothing. First click asks,
+  // the second removes; the pop-up says what it is doing and what it did.
+  const err = ov.querySelector('#orphanErr');
+  const closeBtn = ov.querySelector('#orphanClose');
+  const status = document.createElement('div');
+  status.style.cssText = 'display:none;margin-top:12px;padding:10px 12px;border-radius:8px;font-size:13px';
+  go.parentElement.before(status);
+  const say = (text, kind) => {
+    status.textContent = text; status.style.display = 'block';
+    status.style.background = kind === 'ok' ? '#dcfce7' : kind === 'warn' ? '#fef3c7' : '#eff6ff';
+    status.style.color = kind === 'ok' ? '#15803d' : kind === 'warn' ? '#b45309' : '#1d4ed8';
+  };
+  const picked = () => [...ov.querySelectorAll('.orphanPick:checked')].map(cb => groups[Number(cb.dataset.i)]);
+  const total = () => picked().reduce((n, g) => n + g.delegation + g.checklist, 0);
+  let armed = false;
+  ov.querySelectorAll('.orphanPick').forEach(cb => cb.addEventListener('change', () => {
+    armed = false; go.textContent = 'Remove ticked tasks'; status.style.display = 'none';
+  }));
   go.onclick = async () => {
-    const picked = [...ov.querySelectorAll('.orphanPick:checked')].map(cb => groups[Number(cb.dataset.i)]);
-    const err = ov.querySelector('#orphanErr');
-    if (!picked.length) { err.textContent = 'Tick at least one'; err.style.display = 'block'; return; }
-    const total = picked.reduce((n, g) => n + g.delegation + g.checklist, 0);
-    if (!await appConfirm(`Remove ${plural(total, 'pending task')} of removed users? They go to Logs, where they can be restored.`, 'Remove tasks')) return;
-    go.disabled = true; go.textContent = 'Removing…';
-    const res = await api('/api/admin/orphan-tasks/remove', 'POST', { doer_ids: picked.map(g => g.doer_id) });
-    if (!res || res.error) { go.disabled = false; go.textContent = 'Remove ticked tasks'; err.textContent = (res && res.error) || 'Could not remove'; err.style.display = 'block'; return; }
-    ov.remove();
-    showToast(`🗑 ${plural(res.removed.delegation + res.removed.checklist, 'task')} removed`);
+    err.style.display = 'none';
+    if (!picked().length) { err.textContent = 'Tick at least one'; err.style.display = 'block'; return; }
+    const n = total();
+    if (!armed) {
+      armed = true;
+      go.textContent = `Yes, remove ${plural(n, 'task')}`;
+      say(`Remove ${plural(n, 'pending task')} of removed users? They go to Logs, where they can be restored. Click again to confirm.`, 'warn');
+      return;
+    }
+    go.disabled = true; closeBtn.disabled = true;
+    ov.querySelectorAll('.orphanPick').forEach(cb => { cb.disabled = true; });
+    go.textContent = 'Removing…';
+    say(`⏳ Removing ${plural(n, 'task')}… please wait, this can take a few seconds.`);
+    const res = await api('/api/admin/orphan-tasks/remove', 'POST', { doer_ids: picked().map(g => g.doer_id) });
+    closeBtn.disabled = false;
+    if (!res || res.error) {
+      armed = false; go.disabled = false; go.textContent = 'Remove ticked tasks';
+      ov.querySelectorAll('.orphanPick').forEach(cb => { cb.disabled = false; });
+      status.style.display = 'none';
+      err.textContent = (res && res.error) || 'Could not remove'; err.style.display = 'block';
+      return;
+    }
+    const done = res.removed.delegation + res.removed.checklist;
+    say(`✅ ${plural(done, 'task')} removed. They are in Logs if you ever need them back.`, 'ok');
+    go.style.display = 'none';
+    showToast(`🗑 ${plural(done, 'task')} removed`);
     if (typeof loadAllTasks === 'function' && document.getElementById('page-alltasks')?.classList.contains('active')) loadAllTasks();
   };
 }
