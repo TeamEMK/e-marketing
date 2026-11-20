@@ -105,4 +105,33 @@
   /* All Tasks: the "Clear" button in the user / date filter row carries its
      styling inline, so there is no class to reach it by. */
   #tasksUserDateFilters button{min-height:44px;}
+
+  /* ── Third pass: Users, Client Master, Logs ──────────────────────────── */
+
+  /* mobile.css drops these to 10px app-wide to fit more on screen. That is
+     below what is comfortable to read on a phone, so they come back to 12.
+     Rows get a little taller and wider; the wide tables already scroll. */
+  thead th{font-size:12px;}
+  .action-btn{font-size:12px;}
+  .status-badge,
+  .priority-badge,
+  .role-badge{font-size:12px;}
+
+  /* Client Master: the header buttons, and each row's two actions. */
+  .cm-btn-primary,
+  .cm-btn-ghost,
+  .cm-client-dash,
+  .cm-client-del{min-height:44px;}
+  .cm-client-dash,
+  .cm-client-del,
+  .cm-switch-label,
+  .cm-stat-label{font-size:12px;}
+  /* Part of the client id line is written inline by clients.js. */
+  .cm-client-id,
+  .cm-client-id span{font-size:12px !important;}
+
+  /* Logs: the React table sets every cell's font size inline, so a plain
+     rule cannot reach it. Scoped to that table's cells only. */
+  #logsReactRoot td span,
+  #logsReactRoot td div{font-size:12px !important;}
 }
