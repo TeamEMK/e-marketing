@@ -51,6 +51,10 @@
   #usersTabActions > div{flex:1 1 100%;}
   #usersTabActions #userSearch{width:100% !important;box-sizing:border-box;}
 
+  /* Compose Email: nine formatting buttons at 44px no longer fit one phone
+     row, so the toolbar wraps onto a second line rather than overflowing. */
+  .ce-toolbar{flex-wrap:wrap;}
+
   /* Compose Email: a recipient row's "+ All users" / "Remove all" drop under
      the field instead of past the edge. */
   .ce-row{flex-wrap:wrap;}
@@ -161,4 +165,61 @@
      again in each festival theme under its own :root[data-theme=...]. All of
      those weigh the same as this selector, and this file loads last. */
   :root .ov-card #dPendingBreakdown{font-size:12px !important;}
+
+  /* ── Fifth pass: the pages left with a few stragglers each ───────────── */
+
+  /* Compose Email: the toolbar buttons, and the x on a recipient chip. A
+     44px x would be bigger than the chip around it, so that one gets 28 -
+     still three times the area it had to be hit in. */
+  /* app.html carries its own <style> for this toolbar, further down the
+     document than this file's <link>, so its min-width:32px wins at equal
+     weight - hence the extra class here. Its height:32px needed no help,
+     because min-height outranks height. */
+  .ce-card .ce-toolbar button{min-height:44px;min-width:44px;}
+  .ce-chip button{min-height:28px;min-width:28px;}
+
+  /* Scheduler, Daily Reports, Leaves, HRM, Payment Requests, FMS: one or two
+     undersized controls each. Several carry inline padding, so these set a
+     minimum rather than a size. */
+  .mtg-cal-toolbar button{min-width:44px;}
+  .dr-mini-btn,
+  .multi-select-wrap button,
+  .lv-add-btn,
+  #prSubmitBtn{min-height:44px;}
+  #prCurrencyBtn{min-height:44px;min-width:44px;}
+  #hrmDashHead button{min-height:44px;font-size:12px;}
+  #fmsTasksRefreshBtn button{font-size:12px;}
+  /* A link inside the leave-policy notice: inline, so it needs to become a
+     flex box before a minimum height means anything. */
+  .lp-bad a{display:inline-flex;align-items:center;min-height:44px;}
+
+  /* Text these pages set to 10 or 11px in their own stylesheets. */
+  .race-runner-dept,
+  .race-runner-meta span,
+  .race-runner-initials,
+  .race-gap,
+  .race-legend span,
+  .cp-cell-off,
+  .cp-summary-pill,
+  .mtg-day-hour-label,
+  .mtg-cal-daynames div,
+  .mtg-day-tasks-head,
+  .funnel-val,
+  .enq-kpi-sub,
+  .enq-kpi-sub .flat,
+  .dr-stat-label,
+  .dr-stat-sub,
+  .dr-or,
+  .hrm-stat-label,
+  .lv-user-head small{font-size:12px;}
+
+  /* The remainder are written inline at 10 or 11px, in about a dozen places
+     across Race, Compliance, Scheduler, Inventory, MIS and Leaves, mostly
+     without a class to aim at. Matching the declaration text is how amber.css
+     reaches inline styles in this codebase too, and this stays narrow: only
+     those two sizes are touched, and only on a phone. */
+  [style*="font-size:10px"],
+  [style*="font-size: 10px"],
+  [style*="font-size:11px"],
+  [style*="font-size: 11px"]{font-size:12px !important;}
 }
