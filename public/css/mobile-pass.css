@@ -38,6 +38,13 @@
   #dmsClientList table,
   #dmsFileList table{min-width:520px;}
 
+  /* Dashboard Overdue, on a 320px screen: .dash-bottom is a grid and its card
+     is a grid item, which defaults to min-width:auto - it cannot shrink below
+     its own min-content, so the card came out 330px inside a 296px column and
+     roughly 21px of every row was cut off with nothing to scroll it. Letting
+     the item shrink is the standard fix for this. Measured: card 330 -> 296. */
+  .dash-bottom > *{min-width:0;}
+
   /* Users: the search / Departments / Removed users' tasks / Add / CSV row wraps
      onto more lines instead of running off the screen. */
   #usersTabActions{flex-wrap:wrap;max-width:100%;}
@@ -134,4 +141,24 @@
      rule cannot reach it. Scoped to that table's cells only. */
   #logsReactRoot td span,
   #logsReactRoot td div{font-size:12px !important;}
+
+  /* ── Fourth pass: Dashboard ──────────────────────────────────────────── */
+
+  /* Almost everything the dashboard had left was one row repeated: a 24x28
+     kebab menu and an 11px Done button in every row. amber.css sizes both
+     behind :root:not([data-theme]), so these need the same selector.
+     Set due date sits next to Done and is raised with it, so the two
+     buttons in a row do not end up at different sizes. */
+  :root:not([data-theme]) .task-table-card .dash-kebab{width:44px;height:44px;}
+  :root:not([data-theme]) .task-table-card .action-btn.done,
+  :root:not([data-theme]) .task-table-card .dash-setdue{font-size:12px;}
+
+  /* dashboard.js writes each row's meta line with an inline font size. */
+  .task-table-card td div,
+  .task-table-card td span{font-size:12px !important;}
+
+  /* The pending card's breakdown pill is 11px !important in amber.css, and
+     again in each festival theme under its own :root[data-theme=...]. All of
+     those weigh the same as this selector, and this file loads last. */
+  :root .ov-card #dPendingBreakdown{font-size:12px !important;}
 }
