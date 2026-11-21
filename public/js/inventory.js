@@ -586,123 +586,19 @@ function showInvErr(id, msg) {
 }
 
 // ══════════════════════════════════════════════════════
-// LOGS JS — deleted-records archive (admin only)
+// LOGS — deleted-records archive (admin only)
 // ══════════════════════════════════════════════════════
-let _logsRows = [], _logsRestorable = {};
-
-// Table name -> what a row of it actually is, in the user's terms.
-const LOG_TABLE_LABELS = {
-  delegation_tasks: 'Delegation Task', checklist_tasks: 'Checklist Task',
-  task_subtasks: 'Sub-task', task_comments: 'Comment', users: 'User',
-  clients: 'Client', client_feedback: 'Feedback',
-  client_department_folders: 'DMS Dept Folder', dms_external_links: 'DMS Link',
-  leave_requests: 'Leave Request', holidays: 'Holiday', day_plan_items: 'Day Plan',
-  inventory_items: 'Equipment', fms_sheets: 'FMS Sheet', cc_cards: 'Credit Card',
-  cc_statements: 'CC Statement', cc_transactions: 'CC Transaction',
-  cc_departments: 'CC Department', pr_cards: 'PR Card', payment_requests: 'Payment Request',
-};
-const logTableLabel = t => LOG_TABLE_LABELS[t] || t;
-
-// The Logs page is React (frontend/src/pages/Logs.jsx) since 2026-10-30: the
-// first loadLogs() mounts it, later ones (page open from the nav) reload it.
+// The page is React (frontend/src/pages/Logs.jsx) — table, record pop-up and
+// batch restore all live there. What is left here is the mount: the first
+// loadLogs() draws the component, later ones (the page reopened from the nav)
+// ask it to reload. The vanilla table that used to sit here was unreachable —
+// #logsReactRoot is always in app.html, so loadLogs returned before it, and
+// the ids it read (logsContent, logsSearch, logsFilterTable) are long gone.
 let LOGS_REACT_RELOAD = null;
 function logsSetReactReload(fn){ LOGS_REACT_RELOAD = fn; }
 
 async function loadLogs() {
   const root = document.getElementById('logsReactRoot');
-  if (root) return LOGS_REACT_RELOAD ? LOGS_REACT_RELOAD() : emkReactMount('logs', root);
-  const el = document.getElementById('logsContent');
-  const r = await api('/api/deleted-records');
-  if (r.error) { el.innerHTML = `<div class="empty">⚠️ ${dtEscape(r.error)}</div>`; return; }
-  _logsRows = Array.isArray(r.rows) ? r.rows : [];
-  _logsRestorable = r.restorable || {};
-
-  const sel = document.getElementById('logsFilterTable');
-  const cur = sel.value;
-  const types = [...new Set(_logsRows.map(x => x.source_table))].sort();
-  sel.innerHTML = '<option value="">All Types</option>' +
-    types.map(t => `<option value="${dtEscape(t)}">${dtEscape(logTableLabel(t))}</option>`).join('');
-  if (types.includes(cur)) sel.value = cur;
-
-  renderLogs();
+  if (!root) return;
+  return LOGS_REACT_RELOAD ? LOGS_REACT_RELOAD() : emkReactMount('logs', root);
 }
-
-function renderLogs() {
-  const el = document.getElementById('logsContent');
-  const q = document.getElementById('logsSearch').value.trim().toLowerCase();
-  const tbl = document.getElementById('logsFilterTable').value;
-
-  let rows = _logsRows;
-  if (tbl) rows = rows.filter(r => r.source_table === tbl);
-  if (q) rows = rows.filter(r =>
-    (r.summary || '').toLowerCase().includes(q) ||
-    (r.deleted_by_name || '').toLowerCase().includes(q) ||
-    logTableLabel(r.source_table).toLowerCase().includes(q));
-
-  if (!rows.length) { el.innerHTML = '<div class="empty">No deleted records found.</div>'; return; }
-
-  el.innerHTML = `<table>
-    <thead><tr>
-      <th>What</th><th>Type</th><th>Deleted By</th><th>When</th><th>Status</th><th>Action</th>
-    </tr></thead>
-    <tbody>${rows.map(r => {
-      // Pre-formatted by the DB — see the query. Never re-parse it as a Date
-      // here: that reintroduces the timezone double-shift.
-      const when = r.deleted_at_fmt || '—';
-      const who = r.deleted_by_name
-        ? `${dtEscape(r.deleted_by_name)}${r.deleted_by_role ? ` <span style="font-size:10px;color:#94a3b8">(${dtEscape(r.deleted_by_role)})</span>` : ''}`
-        : '<span style="color:#94a3b8">system</span>';
-      const status = r.restored_at
-        ? `<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:#10b9811a;color:#10b981">Restored</span>`
-        : `<span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:#ef44441a;color:#ef4444">Deleted</span>`;
-      let action;
-      if (r.restored_at) {
-        action = `<span style="font-size:11px;color:#64748b">by ${dtEscape(r.restored_by_name || '—')}</span>`;
-      } else if (_logsRestorable[r.id]) {
-        action = `<button class="action-btn done" onclick="restoreLogRecord(${r.id})">Restore</button>`;
-      } else {
-        action = `<span style="font-size:11px;color:#94a3b8" title="This record type cannot be restored from here">—</span>`;
-      }
-      return `<tr>
-        <td>
-          <div style="font-weight:600;cursor:pointer;color:#4f46e5" onclick="viewLogRecord(${r.id})" title="View full record">
-            ${dtEscape(r.summary || '(no summary)')}
-          </div>
-          ${r.delete_reason ? `<div style="font-size:11px;color:#94a3b8;margin-top:2px">${dtEscape(r.delete_reason)}</div>` : ''}
-        </td>
-        <td><div style="font-size:12px">${dtEscape(logTableLabel(r.source_table))}</div>
-            <div style="font-size:10px;color:#94a3b8">#${r.record_id ?? '—'}</div></td>
-        <td style="font-size:12px">${who}</td>
-        <td style="font-size:12px;color:#64748b">${dtEscape(when)}</td>
-        <td>${status}</td>
-        <td>${action}</td>
-      </tr>`;
-    }).join('')}</tbody>
-  </table>`;
-}
-
-async function viewLogRecord(id) {
-  const r = await api(`/api/deleted-records/${id}`);
-  if (r.error) { showToast(r.error, 'error'); return; }
-  const when = r.deleted_at_fmt || '—';
-  document.getElementById('logsDetailMeta').innerHTML =
-    `<b>${dtEscape(logTableLabel(r.source_table))}</b> #${r.record_id ?? '—'} · deleted by ` +
-    `<b>${dtEscape(r.deleted_by_name || 'system')}</b> on ${dtEscape(when)}` +
-    (r.deleted_via ? `<br>via <code>${dtEscape(r.deleted_via)}</code>` : '') +
-    (r.delete_reason ? `<br>${dtEscape(r.delete_reason)}` : '');
-  const body = r.record_data != null ? r.record_data : r.record_data_raw;
-  document.getElementById('logsDetailJson').textContent =
-    typeof body === 'string' ? body : JSON.stringify(body, null, 2);
-  document.getElementById('logsDetailModal').classList.add('open');
-}
-
-async function restoreLogRecord(id) {
-  if (!await appConfirm('Restore this record back into the app?', 'Restore?')) return;
-  const r = await api(`/api/deleted-records/${id}/restore`, 'POST', {});
-  if (r.error) { appAlert(r.error, 'Cannot restore'); return; }
-  showToast(r.droppedColumns?.length
-    ? `Restored — ${r.droppedColumns.length} obsolete column(s) skipped.`
-    : 'Record restored!');
-  loadLogs();
-}
-
