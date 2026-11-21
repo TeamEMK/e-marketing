@@ -417,7 +417,16 @@ async function loadDashboardPerfCharts(){
   // Bottom Performers — kept as overall-score-based to flag who's lagging.
   const completables = racers.filter(r => Number.isFinite(parseInt(r.completedAll)));
   const top    = [...completables].sort((a, b) => (parseInt(b.completedAll)||0) - (parseInt(a.completedAll)||0)).slice(0, 5);
-  const bottomPool = racers.filter(r => r.overallScore !== null && r.overallScore !== undefined);
+  // Who could be ranked at all — used only for the "too few people" guard below.
+  const rankable = racers.filter(r => r.overallScore !== null && r.overallScore !== undefined);
+  // Two filters, both so the list means what it says:
+  //  - the score only ever subtracts (pending, overdue, revised), so 0 is a
+  //    clean sheet. Someone at 0 was being shown as a bottom performer purely
+  //    because the team was small enough that five names had to be found.
+  //  - Top ranks on tasks completed and this ranks on that score, so the same
+  //    person could head both lists. Matched on userId, not name.
+  const topIds = new Set(top.map(r => r.userId));
+  const bottomPool = rankable.filter(r => r.overallScore < 0 && !topIds.has(r.userId));
   const bottom = [...bottomPool].sort((a, b) => a.overallScore - b.overallScore).slice(0, 5);
   renderDashPerfChart('dashTopChart',    'top',    top.map(r => r.name),    top.map(r => parseInt(r.completedAll)||0), dashPerfColor('top'), 'Tasks completed', null, top.map(r => r.profileImage));
   // Bottom ranks on score while Top ranks on tasks completed, so across a big
@@ -426,9 +435,13 @@ async function loadDashboardPerfCharts(){
   // name led both charts — which says nothing and reads like a contradiction.
   // Below the threshold the chart is replaced by a note; Top and Most Active
   // still mean something at that size, so they are left alone.
-  if (bottomPool.length < BOTTOM_RANK_MIN_PEOPLE) {
+  if (rankable.length < BOTTOM_RANK_MIN_PEOPLE) {
     renderPerfNote('dashBottomChart', 'bottom',
       `Needs at least ${BOTTOM_RANK_MIN_PEOPLE} people to rank`);
+  } else if (!bottom.length) {
+    // Everyone is either on a clean sheet or already named above as a top
+    // performer. That is a real answer, not an empty chart.
+    renderPerfNote('dashBottomChart', 'bottom', 'No one is behind in this period');
   } else {
     renderDashPerfChart('dashBottomChart', 'bottom', bottom.map(r => r.name), bottom.map(r => r.overallScore), dashPerfColor('bottom'), 'Score', null, bottom.map(r => r.profileImage));
   }
