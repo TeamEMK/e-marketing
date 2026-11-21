@@ -609,58 +609,10 @@ async function loadDailyReports(){
 
 function renderDRStats(){
   if (document.getElementById('drReactRoot')) return DR_REACT && DR_REACT();   // React draws it
-  const d = DR_DATA;
-  const totalHours = (d.total_minutes / 60).toFixed(1);
-  const monthLabel = new Date(d.month + '-01').toLocaleString('en-US', { month: 'long', year: 'numeric' });
-  document.getElementById('drStats').innerHTML = `
-    <div class="dr-stat">
-      <div class="dr-stat-label">Month</div>
-      <div class="dr-stat-value" style="font-size:20px">${monthLabel}</div>
-    </div>
-    <div class="dr-stat">
-      <div class="dr-stat-label">Total Entries</div>
-      <div class="dr-stat-value">${d.total_entries}</div>
-      <div class="dr-stat-sub">across ${d.summary.length} user${d.summary.length===1?'':'s'}</div>
-    </div>
-    <div class="dr-stat">
-      <div class="dr-stat-label">Total Time</div>
-      <div class="dr-stat-value">${d.total_minutes}<span style="font-size:14px"> min</span></div>
-      <div class="dr-stat-sub">≈ ${totalHours} hours</div>
-    </div>
-    <div class="dr-stat">
-      <div class="dr-stat-label">Active Users</div>
-      <div class="dr-stat-value">${d.summary.length}</div>
-      <div class="dr-stat-sub">submitted at least once</div>
-    </div>
-  `;
 }
 
 function renderDRSummary(){
   if (document.getElementById('drReactRoot')) return DR_REACT && DR_REACT();   // React draws it
-  const wrap = document.getElementById('drSummaryWrap');
-  if (!DR_DATA.summary.length) {
-    wrap.innerHTML = '<div class="empty">No submissions in this month yet.</div>';
-    return;
-  }
-  let html = `<table class="dr-table"><thead><tr>
-    <th>User</th><th>Department</th><th>Days Filled</th>
-    <th>Total Tasks</th><th>Total Minutes</th><th>Hours</th><th>Avg/Day</th>
-  </tr></thead><tbody>`;
-  for (const u of DR_DATA.summary) {
-    const hours = (u.total_minutes / 60).toFixed(1);
-    const avg = u.days_filled > 0 ? Math.round(u.total_minutes / u.days_filled) : 0;
-    html += `<tr>
-      <td><b>${dtEscape(u.name)}</b><br><span style="color:#64748b;font-size:11px">${dtEscape(u.email)}</span></td>
-      <td>${dtEscape(u.department || '—')}</td>
-      <td>${u.days_filled} day${u.days_filled===1?'':'s'}</td>
-      <td>${u.total_tasks}</td>
-      <td><span class="pill-min">${u.total_minutes} min</span></td>
-      <td>${hours} hr</td>
-      <td>${avg} min/day</td>
-    </tr>`;
-  }
-  html += `</tbody></table>`;
-  wrap.innerHTML = html;
 }
 
 // The All Entries filters (search, type, doer, clients) are React since
@@ -831,73 +783,8 @@ const DR_EW_TAG = ' <span style="background:#dcfce7;color:#15803d;font-weight:70
 
 // Which days are open, by "userId|date", so a filter change keeps them open.
 const DR_OPEN_DAYS = new Set();
-function drToggleDay(row){
-  const key = row.dataset.key;
-  const open = !DR_OPEN_DAYS.has(key);
-  if (open) DR_OPEN_DAYS.add(key); else DR_OPEN_DAYS.delete(key);
-  row.nextElementSibling.style.display = open ? '' : 'none';
-  row.setAttribute('aria-expanded', open ? 'true' : 'false');
-  row.querySelector('.dr-caret').textContent = open ? '▾' : '▸';
-}
-
 function renderDREntries(){
   if (document.getElementById('drReactRoot')) return DR_REACT && DR_REACT();   // React draws it
-  if (!DR_DATA) return;
-  const wrap = document.getElementById('drEntriesWrap');
-  const entries = drFilteredEntries();
-
-  const summaryEl = document.getElementById('drFilterSummary');
-  if (summaryEl) {
-    const totalMin = entries.reduce((s,e) => s + (e.duration_min||0), 0);
-    const users = new Set(entries.map(e => e.user_id));
-    summaryEl.textContent = entries.length
-      ? `${entries.length} entries · ${users.size} ${users.size===1?'doer':'doers'} · ${totalMin} min (${(totalMin/60).toFixed(1)} hr)`
-      : '';
-  }
-
-  if (!entries.length) {
-    wrap.innerHTML = '<div class="empty">No entries match the filters.</div>';
-    return;
-  }
-
-  const groups = drGroupEntries(entries);
-  const manyDoers = groups.length > 1;
-  let html = `<table class="dr-table"><thead><tr>
-    <th>Date</th><th>Clients</th><th style="text-align:center">Entries</th><th>Time</th>
-  </tr></thead><tbody>`;
-  for (const g of groups) {
-    if (manyDoers) {
-      html += `<tr><td colspan="4" style="background:#fff7ed;border-bottom:1px solid #fde68a;color:#7c2d12;font-weight:700">
-        👤 ${dtEscape(g.name)}
-        <span style="font-weight:600;color:#9a3412;margin-left:8px">${g.days.length} ${g.days.length===1?'day':'days'} · ${g.count} ${g.count===1?'entry':'entries'} · ${g.min} min (${drHr(g.min)})</span>
-      </td></tr>`;
-    }
-    for (const day of g.days) {
-      const key = `${g.userId}|${day.date}`;
-      const open = DR_OPEN_DAYS.has(key);
-      const chips = [...day.clients].map(([c, m]) =>
-        `<span class="pill-tag" style="margin:2px 6px 2px 0">${dtEscape(c)} · ${m} min</span>`).join('');
-      const rows = day.entries.map(e => `<tr>
-          <td style="width:1%;white-space:nowrap">${e.client_name ? `<span class="pill-tag">${dtEscape(e.client_name)}</span>` : '—'}${e.extra_working ? DR_EW_TAG : ''}</td>
-          <td style="width:1%;white-space:nowrap">${e.department ? `<span class="pill-dept">${dtEscape(e.department)}</span>` : '—'}</td>
-          <td>${dtRichDesc(e.description)}</td>
-          <td style="width:1%;white-space:nowrap"><span class="pill-min">${e.duration_min} min</span></td>
-        </tr>`).join('');
-      html += `<tr data-key="${dtEscape(key)}" onclick="drToggleDay(this)" onkeydown="if(event.key==='Enter'||event.key===' '){event.preventDefault();drToggleDay(this)}"
-          tabindex="0" role="button" aria-expanded="${open}" style="cursor:pointer" title="Show this day's entries">
-        <td style="white-space:nowrap"><span class="dr-caret" style="display:inline-block;width:14px;color:#c2410c">${open ? '▾' : '▸'}</span><b>${dtEscape(day.date)}</b>
-          <span style="font-size:11px;color:#94a3b8">${drWeekday(day.date)}</span>${day.ew ? DR_EW_TAG : ''}</td>
-        <td>${chips}</td>
-        <td style="text-align:center">${day.entries.length}</td>
-        <td style="white-space:nowrap"><span class="pill-min">${day.min} min</span> <span style="font-size:11px;color:#64748b">${drHr(day.min)}</span></td>
-      </tr>
-      <tr style="display:${open ? '' : 'none'}"><td colspan="4" style="background:#fffdf7;padding:4px 12px 10px 30px">
-        <table style="width:100%;border-collapse:collapse;font-size:12.5px"><tbody>${rows}</tbody></table>
-      </td></tr>`;
-    }
-  }
-  html += `</tbody></table>`;
-  wrap.innerHTML = html;
 }
 
 function drExportCSV(){
