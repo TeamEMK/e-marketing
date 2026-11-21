@@ -2338,134 +2338,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   </div>
 
   <!-- Meeting create/edit modal -->
-  <!-- The form is React (frontend/src/pages/MeetingForm.jsx), opened by openMeetingModal(); #meetingModal below is its fallback. -->
+  <!-- The form is React (frontend/src/pages/MeetingForm.jsx), opened by openMeetingModal(). -->
   <div id="mtgFormRoot" data-react="1" data-react-quiet="1"></div>
-  <div class="modal-overlay" id="meetingModal">
-    <div class="modal" style="width:640px">
-      <button class="modal-close" onclick="closeModal('meetingModal')">×</button>
-      <h3 id="meetingModalTitle">Schedule Meeting</h3>
-      <input type="hidden" id="mtgEditId" value=""/>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Title *</label>
-          <input type="text" id="mtgTitle" placeholder="e.g. Q2 strategy sync"/>
-        </div>
-        <div class="form-group">
-          <label>Client</label>
-          <select id="mtgClient"><option value="">— None —</option></select>
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Date *</label>
-          <input type="date" id="mtgFormDate"/>
-        </div>
-        <div class="form-group">
-          <label>Duration</label>
-          <select id="mtgDuration" onchange="mtgRecalcEnd()">
-            <option value="30">30 min</option>
-            <option value="60">60 min</option>
-            <option value="15">15 min</option>
-            <option value="90">90 min</option>
-          </select>
-        </div>
-      </div>
-      <div class="form-row">
-        <div class="form-group">
-          <label>Start time *</label>
-          <div style="display:flex;gap:8px">
-            <div style="position:relative;flex:1">
-              <input type="text" id="mtgStartDisplay" placeholder="e.g. 10:00" autocomplete="off" style="width:100%"
-                oninput="mtgFilterStartDropdown()" onfocus="mtgOpenStartDropdown()" onkeydown="mtgStartKeydown(event)"/>
-              <div id="mtgStartDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:220px;overflow:auto;z-index:20;box-shadow:0 8px 24px rgba(15,23,42,.12)"></div>
-            </div>
-            <select id="mtgStartPeriod" onchange="mtgPeriodChanged()" style="width:76px;flex-shrink:0">
-              <option value="AM">AM</option>
-              <option value="PM">PM</option>
-            </select>
-            <input type="hidden" id="mtgStart" onchange="mtgRecalcEnd()"/>
-          </div>
-        </div>
-        <div class="form-group">
-          <label>End time</label>
-          <input type="time" id="mtgEnd" step="900" readonly style="background:#f8fafc"/>
-        </div>
-      </div>
-      <div id="mtgRecurrenceSection">
-        <div class="form-row">
-          <div class="form-group">
-            <label>Frequency</label>
-            <select id="mtgFrequency" onchange="mtgOnFrequencyChange()">
-              <option value="">Does not repeat</option>
-              <option value="daily">Daily</option>
-              <option value="weekday">Every Weekday (Mon–Sat)</option>
-              <option value="weekly">Weekly</option>
-              <option value="monthly">Monthly</option>
-              <option value="custom">Custom…</option>
-            </select>
-          </div>
-          <div class="form-group" id="mtgRepeatUntilGroup" style="display:none">
-            <label>Repeat until</label>
-            <input type="date" id="mtgRepeatUntil"/>
-          </div>
-        </div>
-        <div class="form-group" id="mtgRepeatOnGroup" style="display:none">
-          <label>Repeat on</label>
-          <div style="display:flex;gap:6px;flex-wrap:wrap">
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="0" style="margin:0"/>SUN</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="1" style="margin:0"/>MON</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="2" style="margin:0"/>TUE</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="3" style="margin:0"/>WED</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="4" style="margin:0"/>THU</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="5" style="margin:0"/>FRI</label>
-            <label style="display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;text-transform:none;letter-spacing:0;border:1.5px solid #e2e8f0;border-radius:6px;padding:5px 9px;cursor:pointer"><input type="checkbox" data-repeat-day="6" style="margin:0"/>SAT</label>
-          </div>
-        </div>
-        <div id="mtgRecurrenceNote" style="font-size:11px;color:#64748b;margin:-6px 0 12px"></div>
-      </div>
-      <div class="form-group">
-        <label>Attendees (team)</label>
-        <div style="position:relative">
-          <button type="button" id="mtgAttTrigger" onclick="toggleAttDropdown()"
-            style="width:100%;text-align:left;padding:8px 12px;border:1.5px solid #e2e8f0;border-radius:8px;background:#fff;cursor:pointer;font-size:13px;display:flex;justify-content:space-between;align-items:center;color:#1e293b">
-            <span id="mtgAttSummary" style="color:#94a3b8">Select attendees…</span>
-            <span style="color:#64748b">▾</span>
-          </button>
-          <div id="mtgAttDropdown" style="display:none;position:absolute;top:100%;left:0;right:0;margin-top:4px;background:#fff;border:1.5px solid #e2e8f0;border-radius:8px;max-height:220px;overflow:auto;z-index:10;box-shadow:0 8px 24px rgba(15,23,42,.12)">
-            <div style="padding:8px;border-bottom:1px solid #f1f5f9">
-              <input type="text" id="mtgAttSearch" placeholder="Search…" oninput="filterAttDropdown()"
-                style="width:100%;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;outline:none"/>
-            </div>
-            <div id="mtgAttendees" style="padding:4px"></div>
-          </div>
-        </div>
-        <div id="mtgAvailNote" style="font-size:11px;color:#64748b;margin-top:6px"></div>
-      </div>
-      <div class="form-group">
-        <label>Agenda</label>
-        <textarea id="mtgAgenda" rows="3" placeholder="Optional — what's the meeting about?"></textarea>
-      </div>
-      <div class="form-group">
-        <label>Meeting link <span style="font-size:11px;color:#64748b">(leave blank and a Zoom link is created for you)</span></label>
-        <input type="text" id="mtgLink" placeholder="Leave blank for Zoom, or paste any link"/>
-        <label id="mtgCreateLinkWrap" style="display:flex;align-items:center;gap:8px;margin-top:8px;font-size:13px;font-weight:500;text-transform:none;letter-spacing:0;cursor:pointer">
-          <input type="checkbox" id="mtgCreateLink" checked style="width:16px;height:16px;margin:0;flex-shrink:0"/>
-          Create a meeting link
-        </label>
-        <div id="mtgPastNote" style="display:none;margin-top:6px;font-size:12px;color:#b45309">This time has already passed, so no email will be sent.</div>
-      </div>
-      <div class="modal-footer" style="justify-content:space-between">
-        <div style="display:flex;gap:8px">
-          <button id="mtgDeleteBtn" class="btn btn-outline" style="color:#dc2626;border-color:#fca5a5;display:none" onclick="deleteMeeting()">Cancel Meeting</button>
-          <button id="mtgDoneBtn" class="btn btn-outline" style="color:#15803d;border-color:#86efac;display:none" onclick="markMeetingDone(document.getElementById('mtgEditId').value)">✓ Mark Done</button>
-        </div>
-        <div style="display:flex;gap:8px;margin-left:auto">
-          <button class="btn btn-outline" onclick="closeModal('meetingModal')">Close</button>
-          <button class="btn btn-primary" onclick="saveMeeting()">Save</button>
-        </div>
-      </div>
-    </div>
-  </div>
 
   <!-- ── MIS REPORT ── -->
   <div id="page-mis" class="page">
@@ -4318,7 +4192,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
      name undefined, and init()'s own catch turns the ReferenceError into a
      redirect back to the login page. -->
 <script src="/js/notify.js?v=20261115a"></script>
-<script src="/js/meetings.js?v=20261121a"></script>
+<script src="/js/meetings.js?v=20261121b"></script>
 <script src="/js/dms.js?v=20261109c"></script>
 <script src="/js/leads.js?v=20261109j"></script>
 <script src="/js/enquiry.js?v=20261121b"></script>
