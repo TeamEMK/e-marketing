@@ -38,26 +38,6 @@ function ecGetData(){ return { rows: EC_ALL, opts: EC_OPTS }; }
 async function ecLoad() {
   const root = document.getElementById('ecReactRoot');
   if (root) return EC_REACT ? EC_REACT.reload() : emkReactMount('enquiry', root);
-  const wrap = document.getElementById('ecListWrap');
-  wrap.innerHTML = '<div class="empty">Loading enquiries…</div>';
-  const addBtn = document.getElementById('ecAddBtn');
-  if (addBtn) addBtn.style.display = canDo('edit_enquiry') ? '' : 'none';
-  const importBtn = document.getElementById('ecImportBtn');
-  if (importBtn) importBtn.style.display = canDo('admin_enquiry') ? '' : 'none';
-  const [rows, opts] = await Promise.all([
-    api('/api/enquiries'),
-    EC_OPTS ? Promise.resolve(EC_OPTS) : api('/api/enquiries/options'),
-  ]);
-  if (!Array.isArray(rows)) {
-    wrap.innerHTML = `<div class="empty" style="color:#dc2626">${dtEscape((rows && rows.error) || 'Could not load enquiries')}</div>`;
-    return;
-  }
-  EC_ALL = rows;
-  if (opts && !opts.error) EC_OPTS = opts;
-  ecRender();
-  if (EC_ALL.some(e => Number(e.sheet_pending))) ecRetrySheet();
-  // Clients added from here whose Onboarding FMS row is still to be written.
-  if (typeof cmRetryFms === 'function') cmRetryFms();
 }
 
 // Enquiries whose latest save did not reach the Google sheet (its read quota

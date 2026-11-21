@@ -526,40 +526,6 @@ async function loadFeedbackAdmin() {
   // The cards are a React page (frontend/src/pages/Feedback.jsx) since 2026-10-30.
   const root = document.getElementById('fbReactRoot');
   if (root) return FB_REACT_RELOAD ? FB_REACT_RELOAD() : emkReactMount('feedback', root);
-  const wrap = document.getElementById('feedbackContent');
-  if (!wrap) return;
-  wrap.innerHTML = '<div class="empty" style="padding:40px">Loading…</div>';
-  try {
-    const rows = await api('/api/feedback');
-    if (rows.error) { wrap.innerHTML = `<div class="empty" style="color:#dc2626">${dtEscape(rows.error)}</div>`; return; }
-    if (!rows.length) { wrap.innerHTML = '<div class="empty" style="padding:40px">No feedback received yet.</div>'; return; }
-    const stars = n => '★'.repeat(n) + '☆'.repeat(5-n);
-    const ratingColor = n => n >= 4 ? '#10b981' : n === 3 ? '#f59e0b' : '#ef4444';
-    wrap.innerHTML = `<div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(340px,1fr));gap:16px">` +
-      rows.map(f => `
-        <div id="fb-card-${f.id}" style="background:#fff;border:1px solid #e2e8f0;border-radius:14px;padding:20px 22px;transition:box-shadow .15s" onmouseover="this.style.boxShadow='0 4px 16px rgba(0,0,0,.08)'" onmouseout="this.style.boxShadow=''">
-          <div style="display:flex;justify-content:space-between;align-items:start;margin-bottom:12px">
-            <div>
-              <div style="font-weight:700;color:#0f172a;font-size:15px">${dtEscape(f.client_name)}</div>
-              <div style="font-size:12px;color:#64748b;margin-top:2px">${new Date(f.created_at).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'})}</div>
-            </div>
-            <div style="display:flex;align-items:start;gap:10px">
-              <div style="text-align:right">
-                <div style="font-size:20px;color:${ratingColor(f.rating)};letter-spacing:1px">${stars(f.rating)}</div>
-                <div style="font-size:11px;color:#94a3b8;margin-top:2px">${f.rating}/5</div>
-              </div>
-            </div>
-          </div>
-          ${f.description ? `<div style="font-size:13px;color:#374151;background:#f8fafc;border-radius:8px;padding:10px 12px;margin-bottom:12px;line-height:1.5">"${dtEscape(f.description)}"</div>` : ''}
-          <div style="border-top:1px solid #f1f5f9;padding-top:10px;margin-top:4px">
-            <div style="font-size:12px;color:#0f172a;font-weight:600">${dtEscape(f.employee_name)}</div>
-            <div style="font-size:11px;color:#64748b;margin-top:2px">${dtEscape(f.department||'—')}</div>
-            ${f.hod_name ? `<div style="font-size:11px;color:#7c3aed;margin-top:4px">HOD: ${dtEscape(f.hod_name)}</div>` : ''}
-          </div>
-        </div>`).join('') + `</div>`;
-  } catch(e) {
-    wrap.innerHTML = `<div class="empty" style="color:#dc2626">Failed to load: ${e.message}</div>`;
-  }
 }
 
 // ══════════════════════════════════════════════════════
