@@ -64,86 +64,8 @@ async function ecRetrySheet() {
   }
 }
 
-function ecFiltered() {
-  const q = (document.getElementById('ecSearch')?.value || '').toLowerCase().trim();
-  if (!q) return EC_ALL;
-  return EC_ALL.filter(e => [e.client_name, e.business_name, e.mobile, e.lead_handle_by, e.platforms, e.project_types, e.status, e.client_crm_name]
-    .join(' ').toLowerCase().includes(q));
-}
-
 function ecRender() {
   if (EC_REACT) return EC_REACT.render();
-  const wrap = document.getElementById('ecListWrap');
-  const month = new Date().toISOString().slice(0, 7);
-  document.getElementById('ecStatTotal').textContent = EC_ALL.length;
-  document.getElementById('ecStatMonth').textContent = EC_ALL.filter(e => String(e.created_at || '').startsWith(month)).length;
-  document.getElementById('ecStatConverted').textContent = EC_ALL.filter(e => e.conversion_date).length;
-  const list = ecFiltered();
-  if (!list.length) {
-    wrap.innerHTML = `<div class="empty">${EC_ALL.length ? 'No enquiries match the search.' : 'No enquiries yet.'}</div>`;
-    return;
-  }
-  const canDelete = canDo('admin_enquiry');
-  const canEdit = canDo('edit_enquiry');
-  const canStatus = ecCanSetStatus();
-  const canAddClient = canStatus && canDo('edit_clients');
-  const statuses = (EC_OPTS && EC_OPTS.statuses) || Object.keys(EC_STATUS_COLORS);
-  const statusCell = e => {
-    const st = e.status || 'Open';
-    const [fg, bg] = EC_STATUS_COLORS[st] || EC_STATUS_COLORS.Open;
-    const look = `color:${fg};background:${bg};border:1px solid ${fg}33;border-radius:999px;font-size:12px;font-weight:700`;
-    // A plain select: the searchable widget is too heavy for four choices.
-    const pick = canStatus
-      ? `<select data-no-search onchange="ecSetStatus(${e.id}, this)" style="${look};padding:4px 8px;cursor:pointer;outline:none">
-          ${statuses.filter(s => s !== 'Paused' || e.client_id || st === 'Paused')   // Paused is for clients in Client Master
-            .map(s => `<option value="${dtEscape(s)}" ${s === st ? 'selected' : ''} style="color:#0f172a;background:#fff">${dtEscape(s)}</option>`).join('')}</select>`
-      : `<span style="${look};padding:3px 10px;display:inline-block">${dtEscape(st)}</span>`;
-    // With the CRM who added it there, so it is clear who took the client on.
-    const client = e.client_id
-      ? '<div style="font-size:11px;color:#15803d;font-weight:600;margin-top:6px">✓ In Client Master</div>'
-        + (e.client_crm_name ? `<div style="font-size:11px;color:#64748b;margin-top:1px">CRM: <b style="color:#334155">${dtEscape(e.client_crm_name)}</b></div>` : '')
-        + (st === 'Paused' ? '<div style="font-size:11px;color:#b45309;font-weight:600;margin-top:1px">⏸ Onboarding FMS on hold</div>' : '')
-      : st !== 'Converted' ? ''
-      : canAddClient
-        ? `<button class="cm-btn-ghost" style="display:block;margin-top:6px;padding:4px 10px;font-size:12px" onclick="ecAddToClientMaster(${e.id})">➕ Add in Client Master</button>`
-        : '<div style="font-size:11px;color:#94a3b8;margin-top:6px">Not in Client Master yet</div>';
-    return `<td style="white-space:nowrap">${pick}${client}</td>`;
-  };
-  const linkTo = (url, label) => url
-    ? ` <a href="${dtEscape(url)}" target="_blank" rel="noopener" onclick="event.stopPropagation()" style="color:var(--accent);font-weight:600">${label} ↗</a>` : '';
-  const stage = (date, extra) => date || extra
-    ? `<div style="white-space:nowrap">${date ? dtEscape(ecDate(date)) : '<span style="color:#94a3b8">No date</span>'}${extra || ''}</div>`
-    : '<span style="color:#cbd5e1">—</span>';
-  // Actions come first: the table is wider than most screens, and a button
-  // at the far right end needs a sideways scroll to reach.
-  wrap.innerHTML = `<table class="dr-table"><thead><tr>
-      ${canEdit || canDelete ? '<th></th>' : ''}<th>Status</th><th>Added</th><th>Client</th><th>Mobile</th><th>Lead Handle By</th><th>Platform</th>
-      <th>Meeting</th><th>Proposal</th><th>Conversion</th><th>Order Value</th>
-    </tr></thead><tbody>${list.map(e => `<tr>
-      ${canEdit || canDelete ? `<td style="white-space:nowrap">
-        ${canEdit ? `<button class="cm-btn-ghost" style="padding:5px 12px;font-size:12px" onclick="ecOpenForm(${e.id})">✏️ Edit</button>` : ''}
-        ${canDelete ? `<button class="cm-client-del" style="margin-left:6px" onclick="ecDelete(${e.id})">Delete</button>` : ''}
-      </td>` : ''}
-      ${statusCell(e)}
-      <td style="white-space:nowrap"><div>${dtEscape(ecDate(e.created_at))}</div>
-        <div style="font-size:11px;color:#94a3b8">${dtEscape(e.created_by_name || (e.source === 'sheet' ? 'Google Form' : ''))}</div>
-        ${e.updated_at ? `<div style="font-size:11px;color:#94a3b8" title="Last edited ${dtEscape(e.updated_at)}">Edited by ${dtEscape(e.updated_by_name || '—')}</div>` : ''}
-        ${Number(e.sheet_pending) ? '<div style="font-size:11px;color:#b45309;font-weight:600;margin-top:2px" title="Its latest save has not reached the Enquiry Capture sheet yet. It is sent again automatically.">⏳ Not in sheet yet</div>' : ''}</td>
-      <td style="min-width:180px"><b>${dtEscape(e.client_name)}</b>
-        <div style="font-size:12px;color:#64748b">${dtEscape(e.business_name)}</div>
-        ${ecList(e.project_types).map(p => `<span class="pill-dept" style="margin:3px 4px 0 0">${dtEscape(p)}</span>`).join('')}</td>
-      <td style="white-space:nowrap">${dtEscape(e.mobile || '—')}</td>
-      <td style="white-space:nowrap">${dtEscape(e.lead_handle_by || '—')}</td>
-      <td style="min-width:160px">${ecList(e.platforms).map(p => `<span class="pill-tag" style="margin:2px 4px 2px 0">${dtEscape(p)}</span>`).join('') || '—'}</td>
-      <td>${e.meeting_scheduled_date || e.meeting_done_date || e.meeting_url
-        ? `${e.meeting_scheduled_date ? `<div style="white-space:nowrap"><span style="color:#94a3b8">Scheduled</span> ${dtEscape(ecDate(e.meeting_scheduled_date))}</div>` : ''}
-           ${e.meeting_done_date ? `<div style="white-space:nowrap"><span style="color:#94a3b8">Done</span> ${dtEscape(ecDate(e.meeting_done_date))}</div>` : ''}
-           ${linkTo(e.meeting_url, 'Link')}`
-        : '<span style="color:#cbd5e1">—</span>'}</td>
-      <td>${stage(e.proposal_date, linkTo(e.proposal_url, 'Proposal'))}</td>
-      <td>${e.conversion_date ? `<span style="color:#15803d;font-weight:700;white-space:nowrap">${dtEscape(ecDate(e.conversion_date))}</span>` : '<span style="color:#cbd5e1">—</span>'}</td>
-      <td style="white-space:nowrap">${dtEscape(e.order_value || '—')}</td>
-    </tr>`).join('')}</tbody></table>`;
 }
 
 // ── Form ────────────────────────────────────────────────
