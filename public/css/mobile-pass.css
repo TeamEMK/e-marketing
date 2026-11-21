@@ -213,6 +213,40 @@
   .hrm-stat-label,
   .lv-user-head small{font-size:12px;}
 
+  /* ── Sixth pass: the sidebar, which a phone only ever sees in landscape ──
+     In portrait the bottom nav takes over and the sidebar is display:none, so
+     everything here is about the 60px icon rail you get when the phone is
+     turned sideways. base.css hides the pin button behind .sidebar:hover and
+     reveals the labels the same way; a touch screen never hovers, so the pin
+     is the only way to open the rail and it was invisible as well as 28px. */
+  .sb-pin{opacity:1;width:44px;height:44px;}
+  .nav-item{min-height:44px;min-width:44px;}
+  /* The group headers collapse their section when tapped, so they are
+     controls, not headings, and need the same 44px as a nav item. */
+  .nav-group-header{min-height:44px;min-width:44px;}
+  .nav-group-header,
+  .nav-group-label-text{font-size:12px;}
+  .logout-btn{min-height:44px;min-width:44px;}
+  .su-avatar,
+  .su-role{font-size:12px;}
+  /* The search box's shortcut hint sits in the topbar, not the sidebar, and
+     amber.css sets its size through the `font` shorthand. */
+  .amb-search kbd{font-size:12px;}
+
+  /* Making the pin visible was not enough to make it reachable. .logo-text
+     still takes its full width in the collapsed rail - it is only opacity:0 -
+     so margin-left:auto pushed the pin out to x=183 in a 60px rail, where
+     overflow:hidden clipped it and a tap at its centre landed on the topbar
+     behind. Drop the label out of the layout and let the row wrap, so the pin
+     sits under the logo inside the rail. Scoped to the collapsed, unpinned
+     state, so a device that can hover still gets the normal expanding row. */
+  :root:not(.sb-pinned) .sidebar:not(:hover) .logo-text{display:none;}
+  :root:not(.sb-pinned) .sidebar:not(:hover) .sidebar-logo{flex-wrap:wrap;justify-content:center;row-gap:4px;}
+  :root:not(.sb-pinned) .sidebar:not(:hover) .sb-pin{margin-left:0;}
+  /* Pinned open, the same row is 7px too narrow for logo, label and a 44px
+     button side by side, so the button's right edge was shaved off. */
+  :root.sb-pinned .sidebar .sidebar-logo{flex-wrap:wrap;row-gap:4px;}
+
   /* The remainder are written inline at 10 or 11px, in about a dozen places
      across Race, Compliance, Scheduler, Inventory, MIS and Leaves, mostly
      without a class to aim at. Matching the declaration text is how amber.css
