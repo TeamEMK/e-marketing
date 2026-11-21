@@ -1,9 +1,7 @@
 // ══════════════════════════════════════════════════════
 // INVENTORY JS
 // ══════════════════════════════════════════════════════
-let _invItems = [], _invAssignments = [], _invTab = 'mine', _invAssignItemId = null, _invHandoverAssignId = null, _invReturnAssignId = null;
-let _invPhotoBase64 = null;
-let _invSelfAddMode = false;
+let _invItems = [], _invAssignments = [], _invTab = 'mine';
 
 const INV_TYPE_LABELS = {laptop:'💻 Laptop',keyboard:'⌨️ Keyboard',mouse:'🖱️ Mouse',mobile:'📱 Mobile',sim:'📶 SIM',charger:'🔌 Charger',other:'📦 Other'};
 // Same labels without the emoji — used as the item's stored name, since the
@@ -22,8 +20,6 @@ const INV_RETURN_REASON_OPTS = {
 // custodian's call — the holder can only say why they're handing it back.
 // The server enforces this too; this just keeps the option out of their reach.
 const INV_HOLDER_REASONS = ['offboarding', 'damaged'];
-const invReasonOptions = (allowed) => '<option value="">--select--</option>' +
-  allowed.map(k => `<option value="${k}">${INV_RETURN_REASON_OPTS[k]}</option>`).join('');
 const INV_STATUS_COLORS = {available:'#10b981',assigned:'#f59e0b',damaged:'#ef4444',retired:'#94a3b8'};
 
 // The page is React (frontend/src/pages/Inventory.jsx) since 2026-10-30. The
@@ -37,8 +33,8 @@ function invSetTab(tab) { _invTab = tab; }
 
 // The pop-ups (add, assign, handover / return request, confirm return, report
 // issue, details, photo) are React (frontend/src/pages/InvPopups.jsx, in
-// #invPopupsRoot) since 2026-10-31; their markup in app.html and the code
-// below stay as the fallback. Each opener hands its arguments over.
+// #invPopupsRoot) since 2026-10-31. Their markup and the openers' own bodies
+// are gone; each opener now only hands its arguments over.
 let INV_POPUPS_REACT = null, _invPopupWanted = null;
 function invPopupsSetReact(o) { INV_POPUPS_REACT = o; if (o && _invPopupWanted) { const [k, a] = _invPopupWanted; _invPopupWanted = null; o[k](...a); } }
 function _invPopupReact(kind, args) {
@@ -53,32 +49,6 @@ const _invReasonList = keys => keys.map(k => ({ value: k, label: INV_RETURN_REAS
 async function loadInventory() {
   const root = document.getElementById('invReactRoot');
   if (root) return INV_REACT ? INV_REACT.reload() : emkReactMount('inventory', root);
-  // Name kept for the call sites below, but this is no longer "is this person an
-  // admin" — it is "may this person edit Inventory", which the panel now decides.
-  // It was a hardcoded role list, so setting a hod to View hid nothing: the
-  // server refused the write (see userCanDo('edit_inventory') on those routes)
-  // while the buttons stayed on screen and failed on click. hod carries
-  // edit_inventory by default, so nobody's buttons move today.
-  const isAdmin = canDo('edit_inventory');
-  if (isAdmin) {
-    document.getElementById('invTabAll').style.display = 'inline-flex';
-    document.getElementById('invTabAssign').style.display = 'inline-flex';
-    document.getElementById('invStats').style.display = 'grid';
-  }
-  const [items, assignments] = await Promise.all([
-    api('/api/inventory/items'),
-    isAdmin ? api('/api/inventory/assignments') : Promise.resolve([])
-  ]);
-  _invItems = Array.isArray(items) ? items : [];
-  _invAssignments = Array.isArray(assignments) ? assignments : [];
-
-  if (isAdmin) {
-    document.getElementById('invStatTotal').textContent = _invItems.length;
-    document.getElementById('invStatAssigned').textContent = _invItems.filter(i=>i.status==='assigned').length;
-    document.getElementById('invStatAvailable').textContent = _invItems.filter(i=>i.status==='available').length;
-    document.getElementById('invStatHandover').textContent = _invItems.filter(i=>i.handover_status==='pending_handover').length;
-  }
-  renderInventory();
 }
 
 function openInvDetailModal(id) {
@@ -89,46 +59,11 @@ function openInvDetailModal(id) {
     type: INV_TYPE_PLAIN[item.type] || item.type, condition: INV_CONDITION_LABELS[item.item_condition] || item.item_condition,
     returnReason: INV_RETURN_REASON_LABELS[item.return_reason] || item.return_reason, issueLine: item.issue_id ? invIssueLine(item) : '',
   }])) return;
-
-  const statusColor = INV_STATUS_COLORS[item.status] || '#94a3b8';
-  const row = (label, value, mono) => value
-    ? `<div style="display:flex;gap:10px;padding:7px 0;border-bottom:1px solid #f1f5f9">
-         <div style="width:110px;flex-shrink:0;font-size:12px;color:#94a3b8;font-weight:600">${label}</div>
-         <div style="font-size:13px;color:#1e293b${mono ? ";font-family:monospace" : ""}">${esc(value)}</div>
-       </div>`
-    : '';
-
-  const photo = item.photo
-    ? `<img src="${esc(item.photo)}" alt="" onclick="viewInvPhoto(${jsArg(item.photo)})"
-         style="width:100%;max-height:200px;object-fit:cover;border-radius:8px;margin-bottom:12px;cursor:zoom-in">`
-    : `<div style="height:120px;background:linear-gradient(135deg,#f1f5f9,#e2e8f0);display:flex;align-items:center;justify-content:center;border-radius:8px;margin-bottom:12px;font-size:44px">${invTypeEmoji(item.type)}</div>`;
-
-  document.getElementById('invDetailTitle').innerHTML =
-    `${invTypeEmoji(item.type)} ${esc(item.name)}
-     <span style="font-size:11px;font-weight:600;padding:2px 8px;border-radius:12px;background:${statusColor}1a;color:${statusColor};margin-left:6px">${esc(item.status)}</span>`;
-
-  document.getElementById('invDetailBody').innerHTML = photo +
-    row('Type', INV_TYPE_PLAIN[item.type] || item.type) +
-    row('Brand', item.brand) +
-    row('Model', item.model) +
-    row('Serial No.', item.serial_number, true) +
-    row('Condition', INV_CONDITION_LABELS[item.item_condition] || item.item_condition) +
-    row('Assigned to', item.assigned_to_name) +
-    row('Added by', item.created_by_name) +
-    row('Notes', item.notes) +
-    row('Return reason', INV_RETURN_REASON_LABELS[item.return_reason] || item.return_reason) +
-    (item.handover_status === 'pending_handover'
-      ? `<div style="margin-top:10px;font-size:12px;color:#ef4444;font-weight:600">⚠️ Handover Pending</div>` : '') +
-    (item.issue_id
-      ? `<div style="margin-top:10px;font-size:12px;color:#334155">${invIssueLine(item)}<div style="margin-top:4px;white-space:pre-wrap">${esc(item.issue_remark||'')}</div></div>` : '');
-
-  document.getElementById('invDetailModal').classList.add('open');
 }
 
 // ── Equipment issues ──────────────────────────────────
 // The holder reports a fault; it only counts once an admin approves it on the
 // Approvals page. Mirrors invIssueApprover in routes/inventory.js.
-let _invIssueItemId = null;
 const invIsIssueApprover = () => ME.role === 'admin' || canDo('admin_inventory');
 
 function invIssueLine(item) {
@@ -143,15 +78,6 @@ function invIssueLine(item) {
 
 function openInvIssueModal(itemId, itemName) {
   if (_invPopupReact('issue', [itemId, itemName])) return;
-  _invIssueItemId = itemId;
-  document.getElementById('invIssueDesc').textContent = itemName;
-  const today = new Date(Date.now() + 330 * 60000).toISOString().slice(0, 10);
-  const d = document.getElementById('invIssueDate');
-  d.value = today;
-  d.max = today;
-  document.getElementById('invIssueRemark').value = '';
-  document.getElementById('invIssueErr').style.display = 'none';
-  document.getElementById('invIssueModal').classList.add('open');
 }
 
 async function resolveInvIssue(issueId) {
@@ -176,22 +102,6 @@ async function loadInvIssueApprovals() {
     if (INV_ISSUE_REACT) return INV_ISSUE_REACT(list);
     return emkReactMount('invissues', el);
   }
-  if (!list.length) {
-    el.innerHTML = '<div class="empty">✅ No pending equipment issues!</div>';
-    return;
-  }
-  el.innerHTML = `<table>
-    <thead><tr><th>Reported By</th><th>Item</th><th>Issue Date</th><th>Remark</th><th>Approve / Reject</th></tr></thead>
-    <tbody>${list.map(x => `<tr>
-      <td style="font-weight:600">${esc(x.reported_by_name||'—')}</td>
-      <td><div style="font-weight:600">${invTypeEmoji(x.item_type)} ${esc(x.item_name||'')}</div><div style="font-size:11px;color:#64748b">${esc([x.brand, x.model].filter(Boolean).join(' · '))}${x.serial_number?' · SN:'+esc(x.serial_number):''}</div></td>
-      <td style="font-size:12px;color:#64748b">${fmtDate(x.issue_date)}</td>
-      <td style="max-width:320px;white-space:pre-wrap;word-break:break-word">${esc(x.remark||'')}</td>
-      <td>
-        <button class="action-btn done" onclick="decideInvIssue(${x.id},'approved')">Approve</button>
-        <button class="action-btn delete" style="margin-left:6px" onclick="decideInvIssue(${x.id},'rejected')">Reject</button>
-      </td>
-    </tr>`).join('')}</tbody></table>`;
 }
 let INV_ISSUE_REACT = null;   // fn(list) from the React list
 let _invIssueList = null;
@@ -216,9 +126,6 @@ function invTypeEmoji(type) {
 
 function viewInvPhoto(src) {
   if (_invPopupReact('photo', [src])) return;
-  document.getElementById('invPhotoViewerImg').src = src;
-  document.getElementById('invPhotoViewer').style.display = 'flex';
-  document.getElementById('invPhotoViewer').classList.add('open');
 }
 
 // Adding is contextual to the open tab: from My Equipment the item lands in
@@ -226,26 +133,6 @@ function viewInvPhoto(src) {
 // adds it to the shared pool as unassigned stock.
 function openInvAddModal() {
   if (_invPopupReact('add', [{ selfAdd: _invTab === 'mine', types: INV_TYPE_LABELS, names: INV_TYPE_PLAIN }])) return;
-  _invSelfAddMode = _invTab === 'mine';
-  document.getElementById('invAddModalTitle').textContent = _invSelfAddMode ? '＋ Add to My Equipment' : '＋ Add Equipment';
-  document.getElementById('invAddModalSaveBtn').textContent = _invSelfAddMode ? 'Add to My Equipment' : 'Save Item';
-  document.getElementById('invType').value = 'laptop';
-  document.getElementById('invTypeOther').value = '';
-  invTypeChanged();
-  document.getElementById('invBrand').value = '';
-  document.getElementById('invModel').value = '';
-  document.getElementById('invSerial').value = '';
-  // Condition is an admin's assessment of stock; someone logging kit they
-  // already hold doesn't grade it, so it stays hidden (and defaults to 'good')
-  // in self-add mode.
-  document.getElementById('invCondition').value = 'good';
-  document.getElementById('invConditionWrap').style.display = _invSelfAddMode ? 'none' : 'block';
-  document.getElementById('invNotes').value = '';
-  document.getElementById('invPhotoFile').value = '';
-  document.getElementById('invPhotoPreview').style.display = 'none';
-  document.getElementById('invAddErr').style.display = 'none';
-  _invPhotoBase64 = null;
-  document.getElementById('invAddModal').classList.add('open');
 }
 
 async function deleteInvItem(id) {
@@ -258,14 +145,6 @@ async function deleteInvItem(id) {
 
 async function openInvAssignModal(itemId, itemName) {
   if (_invPopupReact('assign', [itemId, itemName])) return;
-  _invAssignItemId = itemId;
-  document.getElementById('invAssignItemName').textContent = `Item: ${itemName}`;
-  document.getElementById('invAssignErr').style.display = 'none';
-  const users = await api('/api/users');
-  const sel = document.getElementById('invAssignUser');
-  sel.innerHTML = '<option value="">Select employee…</option>' +
-    (users||[]).filter(u=>u.role!=='client').map(u=>`<option value="${u.id}">${esc(u.name)} (${esc(u.department||'')})</option>`).join('');
-  document.getElementById('invAssignModal').classList.add('open');
 }
 
 // Step 1, admin-initiated: the custodian starts a handover (e.g. someone is
@@ -273,15 +152,6 @@ async function openInvAssignModal(itemId, itemName) {
 function openInvHandoverModal(assignmentId, itemName, userName) {
   if (_invPopupReact('handover', [{ id: assignmentId, title: 'Initiate Handover', button: 'Mark as Handover Pending',
     desc: `Item: ${itemName} — currently with ${userName}`, reasons: _invReasonList(Object.keys(INV_RETURN_REASON_OPTS)) }])) return;
-  _invHandoverAssignId = assignmentId;
-  document.getElementById('invHandoverTitle').textContent = 'Initiate Handover';
-  document.getElementById('invHandoverSubmitBtn').textContent = 'Mark as Handover Pending';
-  document.getElementById('invHandoverDesc').textContent = `Item: ${itemName} — currently with ${userName}`;
-  document.getElementById('invHandoverReason').innerHTML = invReasonOptions(Object.keys(INV_RETURN_REASON_OPTS));
-  document.getElementById('invHandoverReason').value = '';
-  document.getElementById('invHandoverNotes').value = '';
-  document.getElementById('invHandoverErr').style.display = 'none';
-  document.getElementById('invHandoverModal').classList.add('open');
 }
 
 // Step 1, holder-initiated from My Equipment. Same endpoint and same modal —
@@ -290,16 +160,6 @@ function openInvHandoverModal(assignmentId, itemName, userName) {
 function requestInvReturn(assignmentId, itemName) {
   if (_invPopupReact('handover', [{ id: assignmentId, title: 'Return Equipment', button: 'Request Return',
     desc: `${itemName} — it stays listed as yours until an admin confirms they've received it.`, reasons: _invReasonList(INV_HOLDER_REASONS) }])) return;
-  _invHandoverAssignId = assignmentId;
-  document.getElementById('invHandoverTitle').textContent = 'Return Equipment';
-  document.getElementById('invHandoverSubmitBtn').textContent = 'Request Return';
-  document.getElementById('invHandoverDesc').textContent =
-    `${itemName} — it stays listed as yours until an admin confirms they've received it.`;
-  document.getElementById('invHandoverReason').innerHTML = invReasonOptions(INV_HOLDER_REASONS);
-  document.getElementById('invHandoverReason').value = '';
-  document.getElementById('invHandoverNotes').value = '';
-  document.getElementById('invHandoverErr').style.display = 'none';
-  document.getElementById('invHandoverModal').classList.add('open');
 }
 
 // Step 2, admin only: confirm the item is physically back. The reason picked
@@ -308,13 +168,6 @@ function requestInvReturn(assignmentId, itemName) {
 function openInvReturnModal(assignmentId, itemName, claimedReason) {
   if (_invPopupReact('ret', [{ id: assignmentId, desc: `${itemName} — confirm you've received it back.`,
     reasons: _invReasonList(Object.keys(INV_RETURN_REASON_OPTS)), claimed: claimedReason || '' }])) return;
-  _invReturnAssignId = assignmentId;
-  document.getElementById('invReturnDesc').textContent = `${itemName} — confirm you've received it back.`;
-  document.getElementById('invReturnReason').innerHTML = invReasonOptions(Object.keys(INV_RETURN_REASON_OPTS));
-  document.getElementById('invReturnReason').value = claimedReason || '';
-  document.getElementById('invReturnErr').style.display = 'none';
-  invReturnReasonChanged();
-  document.getElementById('invReturnModal').classList.add('open');
 }
 
 // ══════════════════════════════════════════════════════
