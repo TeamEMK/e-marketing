@@ -3906,96 +3906,8 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
   #lpErr{display:none}
 </style>
 
-<!-- The apply form is React (frontend/src/pages/LeaveForm.jsx), opened by openLeaveForm(); #leaveModal below is its fallback. -->
+<!-- The apply form is React (frontend/src/pages/LeaveForm.jsx), opened by openLeaveForm(). -->
 <div id="leaveFormRoot" data-react="1" data-react-quiet="1"></div>
-<div class="modal-overlay" id="leaveModal">
-  <div class="modal lv-modal">
-    <div class="lv-modal-head">
-      <h3 class="lv-modal-title">🗓 Leave Tracker Form</h3>
-      <button class="lv-modal-close" onclick="closeModal('leaveModal')">✕</button>
-    </div>
-    <div class="alert error" id="leaveErr"></div>
-
-    <div class="form-group">
-      <label>Timestamp <span class="lv-req">*</span></label>
-      <input type="text" id="lvTimestamp" disabled/>
-    </div>
-
-    <div class="form-row">
-      <div class="form-group">
-        <label>Employee Name <span class="lv-req">*</span></label>
-        <input type="text" id="lvEmpName" disabled/>
-      </div>
-      <div class="form-group">
-        <label>Employee Email <span class="lv-req">*</span></label>
-        <input type="text" id="lvEmpEmail" disabled/>
-      </div>
-    </div>
-
-    <div class="form-group">
-      <label>Leave Type <span class="lv-req">*</span></label>
-      <div class="lv-type-grid" id="lvTypeGrid">
-        <button type="button" class="lv-type-btn" data-type="full_day" onclick="lvPickType('full_day',this)">
-          <span class="lv-type-ico">🛌</span> Full Day Leave
-        </button>
-        <button type="button" class="lv-type-btn" data-type="half_day" onclick="lvPickType('half_day',this)">
-          <span class="lv-type-ico">⏱</span> Half Day Leave
-        </button>
-        <button type="button" class="lv-type-btn" data-type="work_from_home" onclick="lvPickType('work_from_home',this)">
-          <span class="lv-type-ico">🏠</span> Work From Home
-        </button>
-        <button type="button" class="lv-type-btn" data-type="extra_working" onclick="lvPickType('extra_working',this)">
-          <span class="lv-type-ico">⚡</span> Extra Working
-        </button>
-      </div>
-    </div>
-
-    <div class="form-group">
-      <label>Select Dates <span class="lv-req">*</span> <span class="lv-cal-hint">📅 (click individual dates to select/deselect)</span></label>
-      <div class="lv-calendar" id="lvCalendar">
-        <div class="lv-cal-head">
-          <button type="button" class="lv-cal-nav" onclick="lvCalNav(-1)">‹</button>
-          <div class="lv-cal-month-label" id="lvCalMonthLabel">—</div>
-          <button type="button" class="lv-cal-nav" onclick="lvCalNav(1)">›</button>
-        </div>
-        <div class="lv-cal-weekdays">
-          <span>Su</span><span>Mo</span><span>Tu</span><span>We</span><span>Th</span><span>Fr</span><span>Sa</span>
-        </div>
-        <div class="lv-cal-grid" id="lvCalGrid"></div>
-        <div class="lv-cal-foot">
-          <span class="lv-cal-count-ico">📅</span>
-          <span id="lvCalCount">0 dates selected</span>
-        </div>
-      </div>
-    </div>
-
-    <div class="form-group" id="lvSelectedBox" style="display:none">
-      <label id="lvSelectedLabel">Selected Dates</label>
-      <div id="lvSelectedList" class="lv-selected-list"></div>
-    </div>
-
-    <div class="form-group" id="lvReasonGroup">
-      <label>Reason <span class="lv-req">*</span></label>
-      <textarea id="lvReason" placeholder="Reason for leave (sick, personal work, urgent matter…)"></textarea>
-    </div>
-
-    <!-- Extra Working only: proof files, required (leaves.js ewAttach*) -->
-    <div class="form-group" id="lvAttachGroup" style="display:none">
-      <label>Attachments <span class="lv-req">*</span> <span class="lv-cal-hint">JPG, PNG or PDF · 1 to 5 files · proof of the work</span></label>
-      <input type="file" id="lvAttachInput" accept=".jpg,.jpeg,.png,.pdf,image/jpeg,image/png,application/pdf" multiple onchange="ewAttachPick('lv', this)">
-      <div id="lvAttachList"></div>
-    </div>
-
-    <div class="lv-approver-hint" id="lvApproverHint" style="display:none">
-      ℹ️ Approval will be sent to: <b id="lvApproverHintName"></b>
-    </div>
-
-    <div class="modal-footer">
-      <button class="btn btn-outline" onclick="closeModal('leaveModal')">Cancel</button>
-      <button class="lv-save-btn" onclick="saveLeave()">Save</button>
-    </div>
-  </div>
-</div>
 
 <!-- ── LEAVE APPROVAL DECISION MODAL ── -->
 <div class="modal-overlay" id="leaveDecisionModal">
@@ -4180,7 +4092,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/daily.js?v=20261123a"></script>
 <script src="/js/clients.js?v=20261121a"></script>
 <script src="/js/reports.js?v=20261121a"></script>
-<script src="/js/leaves.js?v=20261123a"></script>
+<script src="/js/leaves.js?v=20261123b"></script>
 <script src="/js/leave-policy.js?v=20261109b"></script>
 <script src="/js/compose-mail.js?v=20261101b"></script>
 <script src="/js/emk-creds.js?v=20261109a"></script>
