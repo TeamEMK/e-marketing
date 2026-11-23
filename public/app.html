@@ -3864,76 +3864,6 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 ══════════════════════════════════════ -->
 <!-- The form is React (frontend/src/pages/EnquiryForm.jsx), opened by ecOpenForm(); #ecModal below is its fallback. -->
 <div id="ecFormRoot" data-react="1" data-react-quiet="1"></div>
-<div class="modal-overlay" id="ecModal">
-  <div class="modal" style="width:680px;max-width:96vw;max-height:90vh;overflow-y:auto">
-    <h3 id="ecModalTitle">📝 New Enquiry</h3>
-    <div class="alert error" id="ecErr"></div>
-    <div class="form-group">
-      <label>Client Name <span style="color:#dc2626">*</span></label>
-      <input type="text" id="ecClientName" maxlength="255"/>
-    </div>
-    <div class="form-group">
-      <label>Business Name <span style="color:#dc2626">*</span></label>
-      <textarea id="ecBusinessName" maxlength="500" style="min-height:56px"></textarea>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px">
-      <div class="form-group">
-        <label>Mobile Number</label>
-        <input type="tel" id="ecMobile" maxlength="30"/>
-      </div>
-      <div class="form-group">
-        <label>Lead Handle By</label>
-        <select id="ecLeadHandleBy"></select>
-      </div>
-    </div>
-    <div class="form-group">
-      <label>Project Type</label>
-      <div id="ecProjectTypes"></div>
-    </div>
-    <div class="form-group">
-      <label>Platform</label>
-      <div id="ecPlatforms"></div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px">
-      <div class="form-group">
-        <label>Meeting Scheduled Date</label>
-        <input type="date" id="ecMeetingScheduled"/>
-      </div>
-      <div class="form-group">
-        <label>Meeting Done Date</label>
-        <input type="date" id="ecMeetingDone"/>
-      </div>
-    </div>
-    <div class="form-group">
-      <label>Meeting URL</label>
-      <input type="url" id="ecMeetingUrl" placeholder="https://"/>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px">
-      <div class="form-group">
-        <label>Proposal Date</label>
-        <input type="date" id="ecProposalDate"/>
-      </div>
-      <div class="form-group">
-        <label>Proposal URL</label>
-        <input type="url" id="ecProposalUrl" placeholder="https://"/>
-      </div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:0 16px">
-      <div class="form-group">
-        <label>Conversion Date</label>
-        <input type="date" id="ecConversionDate"/>
-      </div>
-      <div class="form-group">
-        <label>Order Value</label>
-        <input type="text" id="ecOrderValue" maxlength="100"/>
-      </div>
-    </div>
-    <div class="modal-footer" style="justify-content:space-between">
-      <button class="btn btn-outline" onclick="closeModal('ecModal')">Cancel</button>
-      <button class="btn btn-primary" id="ecSaveBtn" onclick="ecSave()">💾 Save Enquiry</button>
-    </div>
-  </div>
-</div>
 
 <!-- ══════════════════════════════════════
      CLIENT MASTER - TRANSFER CLIENTS TO ANOTHER CRM (clients.js cmOpenCrmTransfer)
@@ -4010,7 +3940,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/meetings.js?v=20261121b"></script>
 <script src="/js/dms.js?v=20261109c"></script>
 <script src="/js/leads.js?v=20261109j"></script>
-<script src="/js/enquiry.js?v=20261121b"></script>
+<script src="/js/enquiry.js?v=20261123a"></script>
 <script src="/js/voice-delegate.js?v=20261103a"></script>
 <script src="/js/chatbot.js?v=20261027c"></script>
 

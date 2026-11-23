@@ -6,7 +6,6 @@
 // a converted enquiry to Client Master, are for edit_enquiry and the CRMs.
 let EC_ALL = [];
 let EC_OPTS = null;
-let EC_EDIT_ID = null;   // the enquiry open in the form, or null for a new one
 
 const ecDate = d => {
   if (!d) return '';
@@ -14,7 +13,6 @@ const ecDate = d => {
   return isNaN(x) ? String(d) : x.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' });
 };
 const ecList = v => String(v || '').split('||').filter(Boolean);
-const ecCanSetStatus = () => canDo('edit_enquiry') || canDo('crm_clients');
 // Form platforms whose department is spelled differently (lower case both
 // sides). Landing Page, Whatsapp Marketing, GMB Ads, Sales Consutation, Book
 // Writing and Lead Nuturing Funnel have no department of their own.
@@ -24,7 +22,6 @@ const EC_PLATFORM_DEPT = {
   'website designing & development': 'website design & development',
   'youtube ads': 'youtube',
 };
-const EC_STATUS_COLORS = { Open: ['#475569', '#f1f5f9'], Lost: ['#b91c1c', '#fee2e2'], Converted: ['#15803d', '#dcfce7'], Paused: ['#b45309', '#fef3c7'] };
 
 // The list is a React page (frontend/src/pages/Enquiry.jsx) since 2026-10-30.
 // EC_ALL stays here: the form, status change, import, delete and Add in Client
@@ -68,22 +65,7 @@ function ecRender() {
   if (EC_REACT) return EC_REACT.render();
 }
 
-// ── Form ────────────────────────────────────────────────
-function ecChecks(id, options, picked) {
-  const box = document.getElementById(id);
-  box.innerHTML = options.map(o => `
-    <label style="display:inline-flex;align-items:center;gap:6px;margin:0 14px 6px 0;font-size:13px;font-weight:500;color:#334155;text-transform:none;letter-spacing:0;cursor:pointer">
-      <input type="checkbox" value="${dtEscape(o)}" ${picked.includes(o) ? 'checked' : ''} style="width:15px;height:15px;margin:0;accent-color:#4f46e5"/>${dtEscape(o)}
-    </label>`).join('');
-}
-const ecPicked = id => [...document.querySelectorAll(`#${id} input:checked`)].map(cb => cb.value);
 
-// New enquiry, or (with an id) the same form filled in for editing.
-const EC_FIELDS = {
-  ecClientName: 'client_name', ecBusinessName: 'business_name', ecMobile: 'mobile', ecOrderValue: 'order_value',
-  ecMeetingUrl: 'meeting_url', ecProposalUrl: 'proposal_url', ecMeetingScheduled: 'meeting_scheduled_date',
-  ecMeetingDone: 'meeting_done_date', ecProposalDate: 'proposal_date', ecConversionDate: 'conversion_date',
-};
 // The form is React (frontend/src/pages/EnquiryForm.jsx) since 2026-10-30,
 // mounted into #ecFormRoot; #ecModal and ecSave stay as the fallback.
 let EC_FORM_REACT = null, _ecFormWanted;
@@ -95,62 +77,6 @@ async function ecOpenForm(id) {
     _ecFormWanted = id === undefined ? null : id;
     return emkReactMount('enquiryform', root);
   }
-  if (!canDo('edit_enquiry')) return;
-  if (!EC_OPTS) {
-    const o = await api('/api/enquiries/options');
-    if (!o || o.error) { showToast((o && o.error) || 'Could not load the form', 'error'); return; }
-    EC_OPTS = o;
-  }
-  const cur = id ? EC_ALL.find(e => e.id === id) : null;
-  if (id && !cur) return;
-  EC_EDIT_ID = cur ? cur.id : null;
-  document.getElementById('ecModalTitle').textContent = cur ? '✏️ Edit Enquiry' : '📝 New Enquiry';
-  document.getElementById('ecSaveBtn').textContent = cur ? '💾 Save Changes' : '💾 Save Enquiry';
-  for (const [elId, key] of Object.entries(EC_FIELDS)) document.getElementById(elId).value = (cur && cur[key]) || '';
-  const lead = (cur && cur.lead_handle_by) || '';
-  // An imported response can carry a value the form no longer offers (e.g.
-  // "2 Landing pages"); it is listed too, ticked, so saving keeps it.
-  const withCurrent = (opts, picked) => [...opts, ...picked.filter(p => !opts.includes(p))];
-  const types = cur ? ecList(cur.project_types) : [], plats = cur ? ecList(cur.platforms) : [];
-  // Options carry `selected`, so the searchable select picks the value up.
-  document.getElementById('ecLeadHandleBy').innerHTML = '<option value="">Choose…</option>' +
-    withCurrent(EC_OPTS.leadHandlers, lead ? [lead] : [])
-      .map(n => `<option value="${dtEscape(n)}" ${n === lead ? 'selected' : ''}>${dtEscape(n)}</option>`).join('');
-  ecChecks('ecProjectTypes', withCurrent(EC_OPTS.projectTypes, types), types);
-  ecChecks('ecPlatforms', withCurrent(EC_OPTS.platforms, plats), plats);
-  document.getElementById('ecErr').style.display = 'none';
-  document.getElementById('ecModal').classList.add('open');
-  setTimeout(() => document.getElementById('ecClientName').focus(), 50);
-}
-
-async function ecSave() {
-  const err = document.getElementById('ecErr');
-  err.style.display = 'none';
-  const v = id => document.getElementById(id).value.trim();
-  const body = {
-    client_name: v('ecClientName'), business_name: v('ecBusinessName'), mobile: v('ecMobile'),
-    lead_handle_by: v('ecLeadHandleBy'), project_types: ecPicked('ecProjectTypes'), platforms: ecPicked('ecPlatforms'),
-    meeting_scheduled_date: v('ecMeetingScheduled'), meeting_done_date: v('ecMeetingDone'), meeting_url: v('ecMeetingUrl'),
-    proposal_date: v('ecProposalDate'), proposal_url: v('ecProposalUrl'), conversion_date: v('ecConversionDate'),
-    order_value: v('ecOrderValue'),
-  };
-  const fail = m => { err.textContent = m; err.style.display = 'block'; };
-  if (!body.client_name) return fail('Please enter the client name');
-  if (!body.business_name) return fail('Please enter the business name');
-  const btn = document.getElementById('ecSaveBtn');
-  btn.disabled = true;
-  const editing = EC_EDIT_ID;
-  const r = editing
-    ? await api('/api/enquiries/' + editing, 'PUT', body)
-    : await api('/api/enquiries', 'POST', body);
-  btn.disabled = false;
-  if (!r || r.error) return fail((r && r.error) || 'Could not save the enquiry');
-  closeModal('ecModal');
-  // Saved either way; a sheet problem comes back as a warning to show, and
-  // one the app retries by itself (queued) is not shown as an error.
-  if (r.warning) showToast(r.warning, r.queued ? 'success' : 'error');
-  else showToast(editing ? 'Enquiry updated' : 'Enquiry saved');
-  ecLoad();
 }
 
 async function ecImport() {
