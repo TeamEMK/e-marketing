@@ -15,58 +15,10 @@ async function loadMdoApprovals() {
     if (MDO_REACT) return MDO_REACT(data);
     return emkReactMount('mdoapprovals', tasksEl);
   }
-  try {
-    const tasks = await api('/api/mdo-tasks');
-    if (!Array.isArray(tasks)) { tasksEl.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error loading tasks</div>'; }
-    else mdoRenderTasks(tasks);
-  } catch(e) { tasksEl.innerHTML = '<div style="padding:20px;color:#dc2626;font-size:13px">Error: ' + dtEscape(e.message) + '</div>'; }
 }
 let MDO_REACT = null;   // fn({ rows } | { error }) from the React list
 let _mdoData = null;
 function mdoSetReact(fn) { MDO_REACT = fn; if (fn && _mdoData) fn(_mdoData); }
-
-function mdoRenderTasks(rows) {
-  const el = document.getElementById('mdoTasksList');
-  if (!rows.length) { el.innerHTML = '<div style="padding:24px;text-align:center;color:#94a3b8;font-size:13px">No tasks found</div>'; return; }
-  const statusBadge = s => s==='Approved'
-      ? '<span style="background:#dcfce7;color:#16a34a;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">✅ Approved</span>'
-      : s==='Rejected'
-      ? '<span style="background:#fee2e2;color:#dc2626;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">❌ Rejected</span>'
-      : '<span style="background:#fef9c3;color:#a16207;font-size:11px;font-weight:700;padding:2px 10px;border-radius:10px">⏳ ' + dtEscape(s || 'Pending') + '</span>';
-  const actionCell = r => r.status === 'Pending'
-      ? `<button onclick="mdoReviewTask(${r.id},'Approved')" style="background:#16a34a;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer;margin-right:6px">✅ Approve</button><button onclick="mdoReviewTask(${r.id},'Rejected')" style="background:#dc2626;color:#fff;border:none;border-radius:6px;padding:6px 14px;font-size:12px;font-weight:600;cursor:pointer">❌ Reject</button>`
-      : '—';
-  el.innerHTML = `<table style="width:100%;border-collapse:collapse">
-    <thead><tr style="background:#f8fafc;border-bottom:2px solid #e2e8f0">
-      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Timestamp</th>
-      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Task ID</th>
-      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Description</th>
-      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Assigned By</th>
-      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Assigned To</th>
-      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Priority</th>
-      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Due Date</th>
-      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Approval Needed</th>
-      <th style="padding:9px 14px;text-align:left;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Status</th>
-      <th style="padding:9px 14px;text-align:center;font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase">Action</th>
-    </tr></thead>
-    <tbody>${rows.map((r,i) => {
-      const desc = r.task_description || r.description || '—';
-      const dueDate = r.target_date || r.due_date;
-      return `<tr id="mdoTaskRow-${r.id}" style="${i%2?'background:#f8fafc':''}">
-        <td style="padding:9px 14px;font-size:12px;color:#64748b">${r.timestamp ? new Date(r.timestamp).toLocaleString('en-IN') : '—'}</td>
-        <td style="padding:9px 14px;font-size:12px;font-weight:600">${dtEscape(r.task_id || '—')}</td>
-        <td style="padding:9px 14px;font-size:12px;color:#374151;max-width:260px">${dtEscape(desc)}</td>
-        <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.assigned_by || r.assigned_name || '—')}</td>
-        <td style="padding:9px 14px;font-size:13px;font-weight:600">${dtEscape(r.assigned_to || '—')}</td>
-        <td style="padding:9px 14px;font-size:12px">${dtEscape(r.priority || '—')}</td>
-        <td style="padding:9px 14px;font-size:12px;color:#64748b">${dueDate ? new Date(dueDate).toLocaleDateString('en-IN') : '—'}</td>
-        <td style="padding:9px 14px;font-size:12px">${dtEscape(r.approval_needed || '—')}</td>
-        <td style="padding:9px 14px" id="mdoTaskStatus-${r.id}">${statusBadge(r.status)}</td>
-        <td style="padding:9px 14px;text-align:center" id="mdoTaskAction-${r.id}">${actionCell(r)}</td>
-      </tr>`;
-    }).join('')}</tbody>
-  </table>`;
-}
 
 // The React list passes onBusy and draws its own spinner.
 async function mdoReviewTask(id, status, onBusy) {
@@ -1720,86 +1672,6 @@ function ccRenderDetail() {
       if (CC_OVERVIEW_REACT) return CC_OVERVIEW_REACT(_ccOverviewView);
       return emkReactMount('ccoverview', overview);
     }
-  }
-  if (!bank) {
-    // Build overview: stats across all banks
-    const allBanks = Object.keys(_ccData);
-    let totalTxns = 0, totalAmt = 0, totalCards = 0, totalStmts = 0;
-    allBanks.forEach(b => {
-      Object.values(_ccData[b] || {}).forEach(stmts => {
-        totalCards++;
-        stmts.forEach(s => {
-          totalStmts++;
-          (s.transactions || []).forEach(t => {
-            if (t.txn_type !== 'credit') { totalTxns++; totalAmt += parseFloat(t.amount)||0; }
-          });
-        });
-      });
-    });
-    const bankCards = allBanks.map(b => {
-      const color = CC_BANK_COLORS[b] || '#64748b';
-      let bTxns = 0, bAmt = 0, bCards = 0;
-      Object.values(_ccData[b] || {}).forEach(stmts => {
-        bCards++;
-        stmts.forEach(s => (s.transactions||[]).forEach(t => { if(t.txn_type!=='credit'){bTxns++;bAmt+=parseFloat(t.amount)||0;} }));
-      });
-      return `<div onclick="ccSelectBankFromOverview(${jsArg(b)})" style="background:#fff;border:2px solid #e2e8f0;border-radius:14px;padding:18px 20px;cursor:pointer;transition:all .18s;min-width:0"
-        onmouseover="this.style.borderColor='${color}';this.style.boxShadow='0 4px 16px rgba(0,0,0,.1)'" onmouseout="this.style.borderColor='#e2e8f0';this.style.boxShadow='none'">
-        <div style="display:flex;align-items:center;gap:10px;margin-bottom:12px">
-          <div style="width:36px;height:36px;border-radius:10px;background:${color};display:grid;place-items:center;font-size:17px;flex-shrink:0">🏦</div>
-          <div style="font-size:14px;font-weight:800;color:#0f172a">${dtEscape(b)}</div>
-        </div>
-        <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-          <div style="background:#f8fafc;border-radius:8px;padding:8px 10px">
-            <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Cards</div>
-            <div style="font-size:16px;font-weight:800;color:#0f172a;margin-top:2px">${bCards}</div>
-          </div>
-          <div style="background:#f8fafc;border-radius:8px;padding:8px 10px">
-            <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Txns</div>
-            <div style="font-size:16px;font-weight:800;color:#0f172a;margin-top:2px">${bTxns}</div>
-          </div>
-        </div>
-        <div style="margin-top:10px;background:#fff7ed;border-radius:8px;padding:8px 10px">
-          <div style="font-size:10px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Total Spend</div>
-          <div style="font-size:15px;font-weight:800;color:#dc2626;margin-top:2px">₹${bAmt.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
-        </div>
-      </div>`;
-    }).join('');
-
-    panel.innerHTML = `
-      <div style="padding:28px 24px">
-        ${allBanks.length ? `
-        <!-- Overview stats -->
-        <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:14px;margin-bottom:28px">
-          ${[
-            {icon:'🏦', label:'Banks',        val:allBanks.length,  color:'#4f46e5'},
-            {icon:'💳', label:'Cards',        val:totalCards,        color:'#7c3aed'},
-            {icon:'📄', label:'Statements',   val:totalStmts,        color:'#0891b2'},
-            {icon:'🧾', label:'Transactions', val:totalTxns,         color:'#16a34a'},
-          ].map(s=>`<div style="background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px 18px">
-            <div style="font-size:20px;margin-bottom:6px">${s.icon}</div>
-            <div style="font-size:22px;font-weight:800;color:${s.color}">${s.val}</div>
-            <div style="font-size:11px;font-weight:600;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em;margin-top:2px">${s.label}</div>
-          </div>`).join('')}
-        </div>
-        <div style="margin-bottom:28px;background:#fff;border:1.5px solid #e2e8f0;border-radius:12px;padding:16px 18px;display:flex;align-items:center;justify-content:space-between">
-          <div>
-            <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.05em">Total Spend (All Banks)</div>
-            <div style="font-size:26px;font-weight:800;color:#dc2626;margin-top:4px">₹${totalAmt.toLocaleString('en-IN',{minimumFractionDigits:2})}</div>
-          </div>
-          <div style="font-size:36px;opacity:.15">💳</div>
-        </div>
-        <!-- Bank cards -->
-        <div style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">Banks — click to open</div>
-        <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(220px,1fr));gap:14px">${bankCards}</div>
-        ` : `
-        <div style="text-align:center;padding:60px 20px">
-          <div style="font-size:52px;margin-bottom:16px;opacity:.25">💳</div>
-          <div style="font-size:16px;font-weight:700;color:#0f172a;margin-bottom:8px">No data</div>
-          <div style="font-size:13px;color:#94a3b8">${ccCanEdit() ? 'Upload a PDF statement using the button above to get started.' : 'No statements have been uploaded yet.'}</div>
-        </div>`}
-      </div>`;
-    return;
   }
   const color    = CC_BANK_COLORS[bank] || '#64748b';
   const bankData = _ccData[bank] || {};
