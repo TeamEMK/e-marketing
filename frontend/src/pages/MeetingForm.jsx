@@ -50,6 +50,8 @@ export default function MeetingForm() {
   const [clients, setClients] = useState([]);
   const [users, setUsers] = useState([]);
   const [startOpen, setStartOpen] = useState(false);
+  // Which option the arrow keys are on, the same way SearchSelect tracks it.
+  const [timeActive, setTimeActive] = useState(0);
   const [attOpen, setAttOpen] = useState(false);
   const [attQ, setAttQ] = useState('');
   const [linkTouched, setLinkTouched] = useState(false);
@@ -112,6 +114,12 @@ export default function MeetingForm() {
     const el = startList.current.querySelector(`[data-time-opt="${f.start}"]`);
     if (el) el.scrollIntoView({ block: 'center' });
   }, [startOpen]);
+  // Arrowing down a long list has to bring the highlighted row with it.
+  useEffect(() => {
+    if (!startOpen || !startList.current) return;
+    const el = startList.current.querySelector('[data-time-active="1"]');
+    if (el) el.scrollIntoView({ block: 'nearest' });
+  }, [timeActive, startOpen]);
 
   // Availability of the picked attendees for this slot.
   useEffect(() => {
@@ -258,15 +266,31 @@ export default function MeetingForm() {
           <div ref={css('display:flex;gap:8px')}>
             <div ref={el => { startBox.current = el; if (el) el.setAttribute('style', 'position:relative;flex:1'); }}>
               <input type="text" placeholder="e.g. 10:00" autoComplete="off" ref={css('width:100%')} value={f.startText}
-                onChange={e => { set({ startText: e.target.value }); setStartOpen(true); }} onFocus={() => setStartOpen(true)}
+                onChange={e => { set({ startText: e.target.value }); setStartOpen(true); setTimeActive(0); }}
+                onFocus={() => { setStartOpen(true); setTimeActive(Math.max(0, timeMatches.findIndex(o => o.value === f.start))); }}
                 onKeyDown={e => {
-                  if (e.key === 'Enter') { e.preventDefault(); if (timeMatches[0]) pickTime(timeMatches[0].value); }
-                  else if (e.key === 'Escape') setStartOpen(false);
+                  const n = timeMatches.length;
+                  if (e.key === 'ArrowDown') {
+                    e.preventDefault();
+                    if (!startOpen) setStartOpen(true); else setTimeActive(a => (a + 1) % Math.max(1, n));
+                  } else if (e.key === 'ArrowUp') {
+                    e.preventDefault();
+                    setTimeActive(a => (a - 1 + n) % Math.max(1, n));
+                  } else if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const pick = timeMatches[timeActive] || timeMatches[0];
+                    if (pick) pickTime(pick.value);
+                  } else if (e.key === 'Escape') setStartOpen(false);
                 }} />
               {startOpen ? (
                 <div ref={el => { startList.current = el; if (el) el.setAttribute('style', 'display:block;' + DROP + ';z-index:20'); }}>
-                  {timeMatches.length ? timeMatches.map(o => (
-                    <div key={o.value} data-time-opt={o.value} onClick={() => pickTime(o.value)} {...hover} ref={css('padding:8px 12px;font-size:13px;cursor:pointer;color:#1e293b')}>{o.label}</div>
+                  {timeMatches.length ? timeMatches.map((o, i) => (
+                    // The highlight is driven by timeActive alone, so the mouse and the
+                    // arrow keys cannot end up pointing at two different rows.
+                    <div key={o.value} data-time-opt={o.value} data-time-active={i === timeActive ? '1' : '0'}
+                      onClick={() => pickTime(o.value)} onMouseEnter={() => setTimeActive(i)}
+                      ref={css('padding:8px 12px;font-size:13px;cursor:pointer;color:#1e293b;background:'
+                        + (i === timeActive ? '#f1f5f9' : 'transparent'))}>{o.label}</div>
                   )) : <div ref={css('padding:10px 12px;font-size:12px;color:#94a3b8')}>No matching time</div>}
                 </div>
               ) : null}
