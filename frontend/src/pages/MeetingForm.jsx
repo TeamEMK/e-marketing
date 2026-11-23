@@ -155,11 +155,20 @@ export default function MeetingForm() {
   const q = f.startText.trim().toLowerCase().replace(/\s+/g, '');
   // Match the bare "H:MM" as well as "H:MM AM/PM", so typing "10:00" keeps both periods.
   const timeMatches = q ? TIMES.filter(o => o.label.toLowerCase().replace(/\s+/g, '').includes(q)) : TIMES;
-  // AM/PM changed directly: keep the typed time if valid for the new period, else clear it.
+  // AM/PM changed directly: flip the period on the time already entered and let
+  // the end time follow, so 8:00 AM becomes 8:00 PM with an 8:30 PM end.
+  // It used to look the new time up in TIMES and wipe the field when it was not
+  // there - and TIMES only runs 8 AM to 8 PM, so nearly every switch emptied
+  // both boxes. TIMES is the suggestion list, not the set of allowed values:
+  // start_time is a plain HH:MM, and a slot outside business hours is already
+  // called out by the availability note below.
   const changePeriod = p => {
     const typed = f.startText.trim().replace(/\s+/g, '');
-    const m = TIMES.find(o => o.period === p && o.h12Label.replace(/\s+/g, '') === typed);
-    set(m ? { period: p, start: m.value, startText: m.h12Label } : { period: p, start: '', startText: '' });
+    const m = /^(\d{1,2}):([0-5]\d)$/.exec(typed);
+    if (!m) { set({ period: p }); setStartOpen(true); return; }
+    const h12 = Number(m[1]) % 12;            // 12 AM is 00, 12 PM is 12
+    const h24 = p === 'PM' ? h12 + 12 : h12;
+    set({ period: p, start: `${pad(h24)}:${m[2]}`, startText: `${h12 === 0 ? 12 : h12}:${m[2]}` });
     setStartOpen(true);
   };
   // Frequency: a "repeat until" three months on is filled in when first needed.
