@@ -98,32 +98,6 @@ function renderUsersTable(users) {
     if (USERS_REACT) return USERS_REACT(users);
     return emkReactMount('users', tbody);
   }
-  if (!users.length) {
-    tbody.innerHTML = `<tr><td colspan="6" style="text-align:center;padding:24px;color:#94a3b8">No users found</td></tr>`;
-    return;
-  }
-  // Store all users in map so openEditUser(id) can safely retrieve data
-  users.forEach(u => { _usersMap[u.id] = u; });
-  const roleLabel = r => r==='admin'?'👑 Admin':r==='hod'?'🏢 HOD':r==='pc'?'🖥️ PC':'👤 User';
-  tbody.innerHTML = users.map(u=>{
-    const userRole = u.user_role || u.role;
-    const showBoth = userRole !== u.role;
-    return `
-    <tr>
-      <td style="font-weight:600">${esc(u.name)}</td>
-      <td style="color:#64748b">${esc(u.email)}</td>
-      <td style="color:#64748b">${esc(u.phone||'—')}</td>
-      <td style="color:#64748b">${esc(u.department||'—')}</td>
-      <td>
-        <span class="role-badge ${['admin','hod','pc','user'].includes(u.role)?u.role:'user'}" title="App Role — permissions">${roleLabel(u.role)}</span>
-        ${showBoth ? `<br><span class="role-badge ${['admin','hod','pc','user'].includes(userRole)?userRole:'user'}" style="font-size:10px;margin-top:3px;display:inline-block;opacity:.85" title="User Role — leave hierarchy">→ ${roleLabel(userRole)}</span>` : ''}
-      </td>
-      <td>
-        <button class="action-btn edit" onclick="openEditUser(${u.id})">Edit</button>
-        <button class="action-btn delete" style="margin-left:6px" onclick="deactivateUser(${u.id})">Deactivate</button>
-      </td>
-    </tr>`;
-  }).join('');
 }
 
 function _setWeekOff(s) {
@@ -775,6 +749,18 @@ async function openOrphanTasks() {
 function loadProfilePage() {
   const root = document.getElementById('profileRoot');
   if (root && !PROFILE_REACT) emkReactMount('profile', root);
+}
+
+// Attendance (frontend/src/pages/Attendance.jsx) — phone punch in / punch out.
+// Mounted once, like Profile; the page reloads its own data when it mounts.
+let ATTENDANCE_REACT = false;
+function loadAttendancePage() {
+  const root = document.getElementById('attendanceRoot');
+  if (!root || ATTENDANCE_REACT) return;
+  // The flag is set from the result, not before the call: a mount that failed
+  // (bundle did not load) must be retried the next time the page is opened,
+  // not remembered as done.
+  emkReactMount('attendance', root).then(ok => { ATTENDANCE_REACT = !!ok; });
 }
 
 // ══════════════════════════════════════════════════════
