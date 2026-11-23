@@ -282,39 +282,6 @@ async function loadApprovals() {
     return emkReactMount('approvals', container);
   }
 
-  if (!approvals.length) {
-    container.innerHTML = `<div class="empty" style="background:#fff;border-radius:12px;border:1px solid #e2e8f0;">✅ No pending task approvals!</div>`;
-  } else {
-    const reviseCount = approvals.filter(a => a.action_type === 'revised').length;
-    const bulkBtn = (reviseCount > 0 && (ME.role === 'admin' || ME.role === 'pc' || canDo('admin_approvals')))
-      ? `<div style="margin-bottom:12px;display:flex;justify-content:flex-end">
-           <button class="btn btn-primary" onclick="approveAllRevises()">✅ Approve all ${reviseCount} revise request${reviseCount>1?'s':''}</button>
-         </div>`
-      : '';
-    container.innerHTML = bulkBtn + `
-      <div class="flat-tasks-table">
-        <table>
-          <thead><tr>
-            <th>Employee</th><th>Delegated By</th><th>Client</th><th>Task</th><th>Action Requested</th><th>Requested On</th><th>Approve / Reject</th>
-          </tr></thead>
-          <tbody>
-            ${approvals.map(a => `
-              <tr>
-                <td style="font-weight:600">${esc(a.requestedByName)}</td>
-                <td style="color:#475569">${esc(a.requestedToName||'—')}</td>
-                <td style="color:#475569">${esc(a.clientName||'—')}</td>
-                <td>${esc(a.description||'—')}</td>
-                <td><span class="status-badge ${a.action_type}">${a.action_type==='completed'?'✅ Mark Complete':'🔄 Revision'}</span>${a.action_type==='revised' && a.reviseToDate ? `<div style="font-size:11px;color:#64748b;margin-top:3px">${a.currentDue?fmtDate(a.currentDue)+' → ':''}<b style="color:#9d174d">${fmtDate(a.reviseToDate)}</b></div>` : ''}${a.note ? `<div style="font-size:12px;color:#334155;margin-top:5px;max-width:280px;white-space:pre-wrap;word-break:break-word"><span style="color:#64748b;font-weight:600">Reason:</span> ${esc(a.note)}</div>` : ''}</td>
-                <td style="color:#64748b;font-size:12px">${new Date(a.created_at).toLocaleDateString('en-IN')}</td>
-                <td>
-                  <button class="action-btn done" onclick="handleApproval(${a.id},'approved')">Approve</button>
-                  <button class="action-btn delete" style="margin-left:6px" onclick="handleApproval(${a.id},'rejected')">Reject</button>
-                </td>
-              </tr>`).join('')}
-          </tbody>
-        </table>
-      </div>`;
-  }
 }
 
 async function approveAllRevises() {
@@ -579,8 +546,8 @@ function loadAttendancePage() {
 let MW_DATA = null;
 let MW_CHOSEN_SCORE = -10;
 let MW_LAST_COMMITTED = null; // for live-preview comparison
-// The pop-up is React (frontend/src/pages/MondayCheckin.jsx, in #mwRoot) when that root
-// carries data-react; #mondayCheckinModal is the fallback. Both commit through mwCommitSend().
+// The pop-up is React (frontend/src/pages/MondayCheckin.jsx, in #mwRoot).
+// It commits through mwCommitSend().
 let MW_REACT = null, _mwWanted = null;
 function mwSetReact(fn) { MW_REACT = fn; if (fn && _mwWanted) { const w = _mwWanted; _mwWanted = null; fn(w); } }
 
@@ -662,226 +629,10 @@ async function mwLoadAndShow() {
       if (MW_REACT) MW_REACT(view); else { _mwWanted = view; emkReactMount('mondaycheckin', mwRoot); }
       return;
     }
-    document.getElementById('mwGreeting').textContent = `${greet}, ${firstName}`;
-    document.getElementById('mwSubtitle').textContent = `Monday Check-in · 30 seconds`;
-
-    // Last week — score, rank, verdict
-    const lw = MW_DATA.lastWeek;
-    const lastCommit = lw.plan && lw.plan.user_committed_score !== null ? parseFloat(lw.plan.user_committed_score) : null;
-    const lastActual = lw.stats.overall.score;
-    MW_LAST_COMMITTED = lastCommit;
-
-    document.getElementById('mwLastRange').textContent = mwFmtDateRange(lw.start, lw.end);
-    const rank = mwRankFor(lastActual);
-    document.getElementById('mwBadgeIcon').textContent = rank.icon;
-    document.getElementById('mwBadgeTitle').textContent = rank.title;
-    const scoreEl = document.getElementById('mwGaugeText');
-    scoreEl.textContent = mwFmtScore(lastActual);
-    scoreEl.className = 'mw-last-score ' + mwScoreClass(lastActual);
-
-    const verdictEl = document.getElementById('mwLastVerdict');
-    if (lastCommit !== null && lastActual !== null) {
-      if (lastActual >= lastCommit) {
-        verdictEl.className = 'mw-last-verdict mw-hit';
-        verdictEl.innerHTML = `🎯 Target hit · committed ${mwFmtScore(lastCommit)}, scored ${mwFmtScore(lastActual)}`;
-      } else {
-        const gap = (lastCommit - lastActual).toFixed(1);
-        verdictEl.className = 'mw-last-verdict mw-miss';
-        verdictEl.innerHTML = `📉 Missed by ${gap} pts · committed ${mwFmtScore(lastCommit)}, scored ${mwFmtScore(lastActual)}`;
-      }
-    } else if (lastActual === null) {
-      verdictEl.className = 'mw-last-verdict';
-      verdictEl.textContent = 'No tasks last week — fresh slate.';
-    } else {
-      verdictEl.className = 'mw-last-verdict';
-      verdictEl.textContent = `${lw.stats.overall.completed}/${lw.stats.overall.total} tasks done · no target was set last week`;
-    }
-
-    // Pre-fill breakdown card headers/meta (tasks lazy-loaded on first toggle)
-    const del = lw.stats.delegation, chl = lw.stats.checklist;
-    const delScoreEl = document.getElementById('mwDetDelScore');
-    delScoreEl.textContent = mwFmtScore(del.score);
-    delScoreEl.className = 'mw-det-score ' + mwScoreClass(del.score);
-    document.getElementById('mwDetDelMeta').textContent = del.total
-      ? `${del.completed}/${del.total} done · ${del.pending} pending${del.overdue ? ' · ' + del.overdue + ' overdue' : ''}`
-      : 'No delegation tasks';
-    const chlScoreEl = document.getElementById('mwDetChlScore');
-    chlScoreEl.textContent = mwFmtScore(chl.score);
-    chlScoreEl.className = 'mw-det-score ' + mwScoreClass(chl.score);
-    document.getElementById('mwDetChlMeta').textContent = chl.total
-      ? `${chl.completed}/${chl.total} done · ${chl.pending} pending${chl.overdue ? ' · ' + chl.overdue + ' overdue' : ''}`
-      : 'No checklist tasks';
-
-    // FMS placeholder — score/meta filled lazily after sheet fetch
-    document.getElementById('mwDetFmsScore').textContent = '—';
-    document.getElementById('mwDetFmsScore').className = 'mw-det-score';
-    document.getElementById('mwDetFmsMeta').textContent = 'Tap to load';
-
-    // Reset details panel to collapsed and not-loaded so a fresh open re-fetches
-    const detEl = document.getElementById('mwDetails');
-    detEl.style.display = 'none';
-    detEl.dataset.loaded = '';
-    document.querySelector('.mw-last')?.classList.remove('mw-open');
-    document.getElementById('mwDetailsToggle').textContent = '▼ details';
-    document.getElementById('mwDetDelTasks').innerHTML = '';
-    document.getElementById('mwDetChlTasks').innerHTML = '';
-    document.getElementById('mwDetFmsTasks').innerHTML = '';
-
-    // This week — picker
-    const tw = MW_DATA.thisWeek;
-    document.getElementById('mwThisRange').textContent = mwFmtDateRange(tw.start, tw.end);
-
-    let defaultScore = -10;
-    if (lastActual !== null && lastActual !== undefined) {
-      defaultScore = Math.max(-100, Math.min(0, Math.round(lastActual)));
-    }
-    mwSetPick(defaultScore);
-
-    document.getElementById('mwErr').style.display = 'none';
-    document.getElementById('mondayCheckinModal').classList.add('open');
   } catch (e) {
     console.error('mwLoadAndShow:', e);
     showToast('Failed to open check-in', 'error');
   }
-}
-
-function mwRefreshPreview() {
-  const v = MW_CHOSEN_SCORE;
-  const rank = mwRankFor(v);
-  document.getElementById('mwPreviewVal').textContent   = (v > 0 ? '+' : '') + v;
-  document.getElementById('mwPreviewEmoji').textContent = rank.icon;
-  document.getElementById('mwPreviewRank').textContent  = rank.title;
-  // Warn if committing worse than last week's ACHIEVED score (regression).
-  const lastActual = MW_DATA?.lastWeek?.stats?.overall?.score;
-  const warn = document.getElementById('mwRegressWarn');
-  if (warn) {
-    if (lastActual !== null && lastActual !== undefined && v < lastActual) {
-      warn.style.display = 'block';
-      warn.innerHTML = `⚠️ Last week you <b>achieved ${mwFmtScore(lastActual)}</b> — you're committing <b>${mwFmtScore(v)}</b>, which is worse. Aim to match or beat it. (This flag will be visible to the admin.)`;
-    } else {
-      warn.style.display = 'none';
-    }
-  }
-}
-
-function mwSetPick(val) {
-  const v = Math.max(-100, Math.min(0, parseInt(val) || 0));
-  MW_CHOSEN_SCORE = v;
-  document.getElementById('mwSlider').value = v;
-  document.querySelectorAll('.mw-quick-btn').forEach(b => {
-    b.classList.toggle('active', parseInt(b.dataset.v) === v);
-  });
-  mwRefreshPreview();
-}
-function mwSliderChange(val) {
-  MW_CHOSEN_SCORE = Math.max(-100, Math.min(0, parseInt(val) || 0));
-  document.querySelectorAll('.mw-quick-btn').forEach(b => {
-    b.classList.toggle('active', parseInt(b.dataset.v) === MW_CHOSEN_SCORE);
-  });
-  mwRefreshPreview();
-}
-
-async function mwToggleDetails() {
-  const det = document.getElementById('mwDetails');
-  const wrap = document.querySelector('.mw-last');
-  const toggle = document.getElementById('mwDetailsToggle');
-  if (det.style.display === 'block') {
-    det.style.display = 'none';
-    wrap.classList.remove('mw-open');
-    toggle.textContent = '▼ details';
-    return;
-  }
-  det.style.display = 'block';
-  wrap.classList.add('mw-open');
-  toggle.textContent = '▲ hide';
-  if (det.dataset.loaded === '1') return;
-
-  const renderTaskList = (containerId, tasks, emptyMsg) => {
-    const el = document.getElementById(containerId);
-    if (!tasks || !tasks.length) {
-      el.innerHTML = `<div class="mw-det-empty">${emptyMsg}</div>`;
-      return;
-    }
-    const today = MW_DATA.todayStr;
-    el.innerHTML = tasks.map(t => {
-      const isOverdue = t.status === 'pending' && t.due_date < today;
-      const stCls = isOverdue ? 'overdue' : t.status;
-      const stLabel = isOverdue ? 'Overdue' : (t.status === 'revised' ? 'Revised' : t.status[0].toUpperCase() + t.status.slice(1));
-      const sub = `${fmtDate(t.due_date) || ''}${t.assigned_by_name ? ' · by ' + dtEscape(t.assigned_by_name) : ''}`;
-      return `<div class="mw-det-task">
-        <div class="mw-det-task-desc">${dtEscape(t.description || '—')}<small>${sub}</small></div>
-        <span class="mw-det-task-st ${stCls}">${stLabel}</span>
-      </div>`;
-    }).join('');
-  };
-
-  const renderFmsList = (tasks) => {
-    const el = document.getElementById('mwDetFmsTasks');
-    if (!tasks || !tasks.length) {
-      el.innerHTML = '<div class="mw-det-empty">No FMS rows planned this week</div>';
-      return;
-    }
-    el.innerHTML = tasks.map(t => {
-      const stCls = t.status === 'completed' ? 'completed' : 'pending';
-      const stLabel = t.status === 'completed' ? 'Done' : 'Pending';
-      const sub = `${dtEscape(t.fmsName)} · planned ${dtEscape(t.planValue)}${t.actualValue ? ' · done ' + dtEscape(t.actualValue) : ''}`;
-      return `<div class="mw-det-task">
-        <div class="mw-det-task-desc">${dtEscape(t.stepName || '—')}<small>${sub}</small></div>
-        <span class="mw-det-task-st ${stCls}">${stLabel}</span>
-      </div>`;
-    }).join('');
-  };
-
-  document.getElementById('mwDetDelTasks').innerHTML = '<div class="mw-det-empty">Loading…</div>';
-  document.getElementById('mwDetChlTasks').innerHTML = '<div class="mw-det-empty">Loading…</div>';
-  document.getElementById('mwDetFmsTasks').innerHTML = '<div class="mw-det-empty">Loading…</div>';
-  try {
-    const [delRes, chlRes, fmsRes] = await Promise.all([
-      api(`/api/my-week-tasks?type=delegation&start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`),
-      api(`/api/my-week-tasks?type=checklist&start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`),
-      api(`/api/my-week-fms-tasks?start=${MW_DATA.lastWeek.start}&end=${MW_DATA.lastWeek.end}`)
-    ]);
-    renderTaskList('mwDetDelTasks', delRes.tasks || [], 'No delegation tasks this week');
-    renderTaskList('mwDetChlTasks', chlRes.tasks || [], 'No checklist tasks this week');
-
-    // Compute FMS score/meta from the returned tasks (no separate stats call)
-    const fmsTasks = fmsRes.tasks || [];
-    const fmsTotal = fmsTasks.length;
-    const fmsDone  = fmsTasks.filter(t => t.status === 'completed').length;
-    const fmsScoreEl = document.getElementById('mwDetFmsScore');
-    if (fmsTotal === 0) {
-      fmsScoreEl.textContent = '—';
-      fmsScoreEl.className = 'mw-det-score';
-      document.getElementById('mwDetFmsMeta').textContent = 'No FMS steps assigned';
-    } else {
-      // FMS uses % completion (0–100), not the -100..0 scale
-      const pct = Math.round((fmsDone / fmsTotal) * 100);
-      fmsScoreEl.textContent = pct + '%';
-      fmsScoreEl.className = 'mw-det-score ' + (pct >= 80 ? 'mw-good' : pct >= 50 ? 'mw-warn' : 'mw-bad');
-      document.getElementById('mwDetFmsMeta').textContent = `${fmsDone}/${fmsTotal} done · ${fmsTotal - fmsDone} pending`;
-    }
-    renderFmsList(fmsTasks);
-
-    det.dataset.loaded = '1';
-  } catch (e) {
-    document.getElementById('mwDetDelTasks').innerHTML = '<div class="mw-det-empty">Failed to load.</div>';
-    document.getElementById('mwDetChlTasks').innerHTML = '<div class="mw-det-empty">Failed to load.</div>';
-    document.getElementById('mwDetFmsTasks').innerHTML = '<div class="mw-det-empty">Failed to load.</div>';
-  }
-}
-
-async function mwSubmit() {
-  const btn = document.getElementById('mwCommitBtn');
-  const err = document.getElementById('mwErr');
-  err.style.display = 'none';
-  btn.disabled = true;
-  btn.textContent = 'Saving…';
-  const res = await mwCommitSend(MW_CHOSEN_SCORE);
-  if (res === true) return;
-  err.textContent = res;
-  err.style.display = 'block';
-  btn.disabled = false;
-  btn.textContent = 'Commit & Start Week →';
 }
 
 // Last week's delegation, checklist and FMS tasks, for the React pop-up's "▼ details".
@@ -905,7 +656,6 @@ async function mwCommitSend(score) {
       committedScore: MW_CHOSEN_SCORE
     });
     if (r.error) return r.error;
-    closeModal('mondayCheckinModal');
     if (MW_REACT) MW_REACT(null);
     const rank = mwRankFor(MW_CHOSEN_SCORE);
     // Confetti when user hit last week's target OR commits to top-tier this week.
@@ -919,12 +669,3 @@ async function mwCommitSend(score) {
     return 'Network error: ' + e.message;
   }
 }
-
-async function mwSnooze() {
-  try {
-    await api('/api/my-week-plan/snooze', 'POST', {});
-    closeModal('mondayCheckinModal');
-    showToast('⏰ Reminder set for tomorrow.');
-  } catch (e) { showToast('Failed to snooze', 'error'); }
-}
-
