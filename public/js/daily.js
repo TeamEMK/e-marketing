@@ -379,94 +379,12 @@ async function loadTransferApprovals() {
     if (TR_REACT) return TR_REACT(_trData);
     return emkReactMount('transfers', container);
   }
-  if (!Array.isArray(transfers)) { container.innerHTML = `<div class="empty">${esc((transfers && transfers.error) || 'Could not load transfers')}</div>`; return; }
-  setApprovalTabBadge('apprTransferBadge', transfers.length);
-  if (!transfers.length) { container.innerHTML=`<div class="empty">✅ No pending transfer requests!</div>`; return; }
-  // A daily checklist sent over a date range arrives as one request per day.
-  // Those are shown as one row — same task, type, from, to and requester — that
-  // opens to list the days, and is decided in one go.
-  const groups = new Map();
-  for (const t of transfers) {
-    const k = [t.task_type, t.description, t.from_user, t.to_user, t.requested_by].join('|');
-    if (!groups.has(k)) groups.set(k, { key: k, rows: [] });
-    groups.get(k).rows.push(t);
-  }
-  _trGroups = [...groups.values()];
-  _trGroups.forEach(g => g.rows.sort((a, b) => String(a.due_date).localeCompare(String(b.due_date))));
-  const dueOf = t => (t.due_date && t.due_date !== '—') ? fmtDate(t.due_date) : '—';
-  container.innerHTML = `
-    <div id="trBulkBar" style="display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid #e2e8f0;flex-wrap:wrap">
-      <label style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:600;cursor:pointer">
-        <input type="checkbox" id="trSelAll" onchange="trSelectAll(this.checked)" style="width:15px;height:15px"/> Select all
-      </label>
-      <span id="trSelCount" style="font-size:12px;color:#64748b">0 selected</span>
-      <button class="action-btn done" id="trBulkApprove" onclick="trBulkDecide('approved')" disabled>✅ Approve selected</button>
-      <button class="action-btn delete" id="trBulkReject" onclick="trBulkDecide('rejected')" disabled>❌ Reject selected</button>
-    </div>
-    <table>
-      <thead><tr><th style="width:30px"></th><th>Task</th><th>Type</th><th>From</th><th>To</th><th>Requested By</th><th>Due dates</th><th>Action</th></tr></thead>
-      <tbody>
-        ${_trGroups.map((g, gi) => {
-          const t = g.rows[0], n = g.rows.length;
-          const span = n === 1 ? dueOf(t) : `${dueOf(t)} → ${dueOf(g.rows[n - 1])}`;
-          const many = n > 1;
-          return `<tr>
-          <td><input type="checkbox" class="tr-grp-cb" data-g="${gi}" onchange="trSelSync()" style="width:15px;height:15px"/></td>
-          <td style="font-size:12px;max-width:220px">${esc(t.description)}</td>
-          <td><span class="status-badge pending" style="font-size:10px">${t.task_type}</span></td>
-          <td style="font-weight:600">${esc(t.fromUserName)}</td>
-          <td style="color:#7c3aed;font-weight:600">${esc(t.toUserName)}</td>
-          <td style="color:#64748b;font-size:12px">${esc(t.requestedByName)}</td>
-          <td style="color:#64748b;font-size:12px;white-space:nowrap">${span}${many
-            ? `<br><a href="javascript:void(0)" onclick="trToggleGroup(${gi})" style="font-size:11px;font-weight:600;color:#7c3aed">${n} days ▾</a>` : ''}</td>
-          <td style="white-space:nowrap">
-            <button class="action-btn done" onclick="trDecideGroup(${gi},'approved')">✅ Approve${many ? ' all' : ''}</button>
-            <button class="action-btn delete" style="margin-left:4px" onclick="trDecideGroup(${gi},'rejected')">❌ Reject${many ? ' all' : ''}</button>
-          </td>
-        </tr>${many ? `<tr id="trGroupDays${gi}" style="display:none"><td></td><td colspan="7" style="padding:6px 10px 12px">
-          ${g.rows.map(r => `<div style="display:flex;align-items:center;gap:10px;padding:4px 0;font-size:12px">
-            <span style="min-width:90px;color:#475569">${dueOf(r)}</span>
-            <button class="action-btn done" style="padding:2px 8px" onclick="handleTransfer(${r.id},'approved')">Approve</button>
-            <button class="action-btn delete" style="padding:2px 8px" onclick="handleTransfer(${r.id},'rejected')">Reject</button>
-          </div>`).join('')}
-        </td></tr>` : ''}`;
-        }).join('')}
-      </tbody>
-    </table>`;
 }
 
 let TR_REACT = null;   // fn({ rows } | { error }) from the React list
 let _trData = null;
 function trSetReact(fn) { TR_REACT = fn; if (fn && _trData) fn(_trData); }
 
-let _trGroups = [];
-function trToggleGroup(gi) {
-  const row = document.getElementById('trGroupDays' + gi);
-  if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
-}
-function trSelectedIds() {
-  return [...document.querySelectorAll('.tr-grp-cb:checked')]
-    .flatMap(cb => (_trGroups[+cb.dataset.g]?.rows || []).map(r => r.id));
-}
-function trSelSync() {
-  const boxes = [...document.querySelectorAll('.tr-grp-cb')];
-  const ids = trSelectedIds();
-  document.getElementById('trSelCount').textContent = ids.length + ' selected';
-  document.getElementById('trBulkApprove').disabled = !ids.length;
-  document.getElementById('trBulkReject').disabled = !ids.length;
-  const all = document.getElementById('trSelAll');
-  if (all) all.checked = boxes.length > 0 && boxes.every(b => b.checked);
-}
-function trSelectAll(on) {
-  document.querySelectorAll('.tr-grp-cb').forEach(b => { b.checked = on; });
-  trSelSync();
-}
-function trDecideGroup(gi, action) {
-  const ids = (_trGroups[gi]?.rows || []).map(r => r.id);
-  if (ids.length === 1) return handleTransfer(ids[0], action);
-  return trDecideMany(ids, action);
-}
-function trBulkDecide(action) { return trDecideMany(trSelectedIds(), action); }
 // Many at once through /api/transfers/bulk; a reason is asked once for all.
 // The React list passes onProgress and greys its own buttons; without it the
 // old markup's buttons and counter are written to directly.
