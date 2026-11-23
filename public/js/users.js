@@ -100,58 +100,7 @@ function renderUsersTable(users) {
   }
 }
 
-function _setWeekOff(s) {
-  const offs = (s||'').split(',').map(x=>x.trim()).filter(Boolean);
-  document.querySelectorAll('.woff-cb').forEach(cb => { cb.checked = offs.includes(cb.value); });
-}
-function _getWeekOff() {
-  return [...document.querySelectorAll('.woff-cb:checked')].map(cb=>cb.value).join(',');
-}
-
 // Extra Off — stored as JSON: [{day:6, weeks:[2,4]}]
-let _extraOffData = [];
-
-function _renderExtraOffList() {
-  const dayNames = ['Sun','Mon','Tue','Wed','Thu','Fri','Sat'];
-  const weekNames = {1:'1st',2:'2nd',3:'3rd',4:'4th',5:'5th'};
-  const container = document.getElementById('extraOffList');
-  if (!container) return;
-  container.innerHTML = _extraOffData.map((item,i) => `
-    <div style="display:flex;align-items:center;gap:6px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:8px;padding:6px 10px">
-      <span style="font-size:12px;flex:1">
-        <strong>${item.weeks.map(w=>weekNames[w]).join(', ')}</strong> ${dayNames[item.day]}
-      </span>
-      <select onchange="_extraOffData[${i}].day=parseInt(this.value);_renderExtraOffList()"
-        style="padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;font-size:12px;font-family:'Inter',sans-serif;outline:none">
-        ${[0,1,2,3,4,5,6].map(d=>`<option value="${d}" ${item.day===d?'selected':''}>${dayNames[d]}</option>`).join('')}
-      </select>
-      <div style="display:flex;gap:3px">
-        ${[1,2,3,4,5].map(w=>`
-          <label style="display:flex;align-items:center;gap:2px;font-size:11px;cursor:pointer;text-transform:none;letter-spacing:0">
-            <input type="checkbox" ${item.weeks.includes(w)?'checked':''}
-              onchange="if(this.checked)_extraOffData[${i}].weeks.push(${w});else _extraOffData[${i}].weeks=_extraOffData[${i}].weeks.filter(x=>x!==${w});_renderExtraOffList()"
-              style="accent-color:#4f46e5;width:12px;height:12px"/>
-            ${weekNames[w]}
-          </label>`).join('')}
-      </div>
-      <button type="button" onclick="_extraOffData.splice(${i},1);_renderExtraOffList()"
-        style="background:none;border:none;color:#ef4444;cursor:pointer;font-size:14px;padding:0 2px">✕</button>
-    </div>`).join('');
-}
-
-function addExtraOff() {
-  _extraOffData.push({ day: 6, weeks: [2,4] }); // default: 2nd & 4th Saturday
-  _renderExtraOffList();
-}
-
-function _setExtraOff(jsonStr) {
-  try { _extraOffData = jsonStr ? JSON.parse(jsonStr) : []; } catch(e) { _extraOffData = []; }
-  _renderExtraOffList();
-}
-
-function _getExtraOff() {
-  return JSON.stringify(_extraOffData.filter(e => e.weeks.length > 0));
-}
 
 // Page list shared by the user modal. Loaded once from /api/access/pages.
 let _accessPages = null;
@@ -161,22 +110,6 @@ async function ensureAccessPages() {
   _accessPages = Array.isArray(r) ? r : [];
   return _accessPages;
 }
-async function renderExtraAccessGrid(currentAccess) {
-  const grid = document.getElementById('uExtraAccessGrid');
-  if (!grid) return;
-  const pages = await ensureAccessPages();
-  const set = new Set(Array.isArray(currentAccess) ? currentAccess : []);
-  grid.innerHTML = pages.map(p => `
-    <label style="display:flex;align-items:center;gap:6px;padding:6px 8px;background:#fff;border:1px solid #e2e8f0;border-radius:6px;cursor:pointer;font-weight:500;color:#374151">
-      <input type="checkbox" class="u-extra-access" value="${p.key}" ${set.has(p.key) ? 'checked' : ''} style="accent-color:#4f46e5;width:14px;height:14px;cursor:pointer">
-      ${p.label}
-    </label>
-  `).join('');
-}
-function readExtraAccessFromForm() {
-  return [...document.querySelectorAll('#uExtraAccessGrid .u-extra-access:checked')].map(el => el.value);
-}
-
 // Departments are not their own table — every list of them in this app
 // (this picker, Client Master's handler-department filter, the Add Client
 // handler dropdown) is derived the same way: distinct, non-empty
@@ -187,36 +120,6 @@ function readExtraAccessFromForm() {
 // an admin added before anyone is in them (withExtraDepts; Users → Departments).
 function uDeptList() {
   return withExtraDepts(Object.values(_usersMap).map(u => (u.department || '').trim()).filter(Boolean));
-}
-
-// selected: the department to preselect — '' for a blank Add User form, or
-// the user's current department when editing. A value that exists in the
-// list selects normally; one that does not (a department only that one
-// legacy row still carries) falls back to the free-text box rather than
-// silently dropping it, so editing an old user never erases their department
-// just by opening the form.
-function uPopulateDeptSelect(selected) {
-  const sel = document.getElementById('uDeptSelect');
-  const txt = document.getElementById('uDepartment');
-  if (!sel || !txt) return;
-  const depts = uDeptList();
-  sel.innerHTML = '<option value="">— Select Department —</option>' +
-    depts.map(d => `<option value="${dtEscape(d)}">${dtEscape(d)}</option>`).join('') +
-    '<option value="__new__">+ Add New Department</option>';
-  const val = (selected || '').trim();
-  if (!val) { sel.value = ''; txt.style.display = 'none'; txt.value = ''; }
-  else if (depts.includes(val)) { sel.value = val; txt.style.display = 'none'; txt.value = val; }
-  else { sel.value = '__new__'; txt.style.display = ''; txt.value = val; }
-}
-
-// Picking an existing department copies it straight into #uDepartment, which
-// stays the single value saveUser() actually reads — the select is only how
-// it gets set. "+ Add New Department" reveals the text box instead.
-function uDeptSelectChange() {
-  const sel = document.getElementById('uDeptSelect');
-  const txt = document.getElementById('uDepartment');
-  if (sel.value === '__new__') { txt.style.display = ''; txt.value = ''; txt.focus(); }
-  else { txt.style.display = 'none'; txt.value = sel.value; }
 }
 
 // The Add / Edit User form is React (frontend/src/pages/UserForm.jsx, in
@@ -234,87 +137,12 @@ function _userFormReact(data) {
 
 function openAddUser() {
   if (_userFormReact({ user: null, depts: uDeptList() })) return;
-  document.getElementById('userModalTitle').textContent='Add User';
-  ['editUserId','uName','uEmail','uNotifEmail','uPhone','uDepartment','uPosition','uPassword','uBirthday','uJoiningDate'].forEach(id=>document.getElementById(id).value='');
-  uPopulateDeptSelect('');
-  // Position is not stored on the user — it only feeds the WhatsApp welcome
-  // announcement, so it shows on Add and stays hidden on Edit.
-  document.getElementById('uPositionGroup').style.display='';
-  document.getElementById('uRole').value='user';
-  document.getElementById('uUserRole').value='user';
-  document.getElementById('pwdOptional').style.display='none';
-  document.getElementById('uBirthdayReq').style.display='inline';
-  document.getElementById('uJoiningReq').style.display='inline';
-  document.getElementById('userErr').style.display='none';
-  document.getElementById('userSuccess').style.display='none';
-  document.getElementById('uExcludeReminder').checked = false;
-  renderExtraAccessGrid([]);
-  document.getElementById('userModal').classList.add('open');
 }
 
 function openEditUser(id) {
   const u = _usersMap[id];
   if (!u) { appAlert('User data not found. Please refresh the page.'); return; }
   if (_userFormReact({ user: u, depts: uDeptList() })) return;
-  document.getElementById('userModalTitle').textContent='Edit User';
-  document.getElementById('editUserId').value=u.id;
-  document.getElementById('uName').value=u.name||'';
-  document.getElementById('uEmail').value=u.email||'';
-  document.getElementById('uNotifEmail').value=u.notification_email||'';
-  document.getElementById('uPhone').value=u.phone||'';
-  uPopulateDeptSelect(u.department||'');
-  document.getElementById('uPosition').value='';
-  document.getElementById('uPositionGroup').style.display='none';
-  // The API returns these as full ISO timestamps, which a date input cannot
-  // parse — without the split the field renders blank even when a date is
-  // stored, and saving would then wipe it. Same trim the Profile page does.
-  document.getElementById('uBirthday').value=String(u.birthday||'').split('T')[0];
-  document.getElementById('uJoiningDate').value=String(u.joining_date||'').split('T')[0];
-  document.getElementById('uPassword').value='';
-  document.getElementById('uRole').value=u.role||'user';
-  document.getElementById('uUserRole').value=u.user_role||u.role||'user';
-  document.getElementById('uExcludeReminder').checked = !!u.exclude_from_reminder;
-  document.getElementById('pwdOptional').style.display='inline';
-  document.getElementById('uBirthdayReq').style.display='none';
-  document.getElementById('uJoiningReq').style.display='none';
-  document.getElementById('userErr').style.display='none';
-  document.getElementById('userSuccess').style.display='none';
-  renderExtraAccessGrid(Array.isArray(u.extra_access) ? u.extra_access : []);
-  document.getElementById('userModal').classList.add('open');
-}
-
-async function saveUser() {
-  const err=document.getElementById('userErr'); err.style.display='none';
-  const suc=document.getElementById('userSuccess'); suc.style.display='none';
-  const id=document.getElementById('editUserId').value;
-  const name=document.getElementById('uName').value.trim();
-  const email=document.getElementById('uEmail').value.trim();
-  const notification_email=document.getElementById('uNotifEmail').value.trim();
-  const phone=document.getElementById('uPhone').value.trim();
-  const department=document.getElementById('uDepartment').value.trim();
-  const position=document.getElementById('uPosition').value.trim();
-  const birthday=document.getElementById('uBirthday').value;
-  const joining_date=document.getElementById('uJoiningDate').value;
-  const password=document.getElementById('uPassword').value;
-  const role=document.getElementById('uRole').value;
-  const user_role=document.getElementById('uUserRole').value;
-  const exclude_from_reminder = document.getElementById('uExcludeReminder').checked;
-  if (!name||!email) { err.textContent='Name and email required'; err.style.display='block'; return; }
-  // Required only for a new user. Editing an existing one must not be blocked
-  // by a date nobody recorded when the account was made.
-  if (!id && !birthday) { err.textContent='Birthday is required'; err.style.display='block'; return; }
-  if (!id && !joining_date) { err.textContent='Joining date is required'; err.style.display='block'; return; }
-  if (!id&&!password) { err.textContent='Password required for new user'; err.style.display='block'; return; }
-  const extra_access = readExtraAccessFromForm();
-  const body={name,email,notification_email,role,user_role,phone,department,birthday,joining_date,exclude_from_reminder,extra_access};
-  // Send-only on create: nothing stores it, the POST just puts it in the
-  // welcome message. On edit there is no welcome message to write.
-  if (!id) body.position=position;
-  if (password) body.password=password;
-  const r = id ? await api(`/api/users/${id}`,'PUT',body) : await api('/api/users','POST',body);
-  if (r.error) { err.textContent=r.error; err.style.display='block'; return; }
-  closeModal('userModal');
-  loadUsers();
 }
 
 function downloadUserSample() {
@@ -323,14 +151,6 @@ function downloadUserSample() {
   a.href = 'data:text/csv;charset=utf-8,'+encodeURIComponent(csv);
   a.download = 'users_sample.csv'; a.click();
   showToast('Sample CSV downloaded!');
-}
-
-async function uploadUsersCSV() {
-  const msg = await usersBulkUpload(document.getElementById('bulkUserFile').files[0]);
-  if (!msg) return;
-  const suc = document.getElementById('userSuccess');
-  suc.textContent = msg;
-  suc.style.display='block';
 }
 
 // Reads the CSV and adds its users, for this form and the React one: the
@@ -590,13 +410,6 @@ async function handleWaDelegation(id, action) {
   loadApprovalBadge();
 }
 
-async function sendBirthdayReminder() {
-  if (!await appConfirm('Send birthday reminder to the WhatsApp group?')) return;
-  const r = await api('/api/admin/send-birthday-reminder', 'POST');
-  if (r.error) { showToast(r.error, 'error'); return; }
-  showToast('✅ Reminder sent to group!');
-}
-
 // Deactivate (was Delete): shows the person's pending tasks, asks who takes them
 // over, then POST /api/users/:id/deactivate. The tasks move with "from <name>" on
 // them, the person can no longer sign in and leaves every list, their name stays
@@ -648,9 +461,6 @@ async function deactivateUser(id) {
     loadUsers();
   };
 }
-// The old name: the Users rows (and any tab still holding them) call this.
-function deleteUser(id) { return deactivateUser(id); }
-
 // Users → 🧹 Removed users' tasks (admin): pending tasks whose doer's account is
 // gone ("— deleted user —" in the lists), grouped by that doer, with a tick each;
 // Remove archives and deletes the ticked groups' tasks (Logs can bring them back).

@@ -3432,103 +3432,6 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <!-- ══════════════════════════════════════
      ADD/EDIT USER MODAL
 ══════════════════════════════════════ -->
-<div class="modal-overlay" id="userModal">
-  <div class="modal" style="max-width:520px">
-    <h3 id="userModalTitle">Add User</h3>
-    <div class="alert error" id="userErr"></div>
-    <div class="alert success" id="userSuccess"></div>
-    <input type="hidden" id="editUserId"/>
-    <div class="form-row">
-      <div class="form-group"><label>Full Name</label><input type="text" id="uName" placeholder="Enter full name"/></div>
-      <div class="form-group"><label>Email <span style="color:#94a3b8;font-weight:400;font-size:11px">(login)</span></label><input type="email" id="uEmail" placeholder="Enter login email"/></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>Notification Email <span style="color:#94a3b8;font-weight:400;font-size:11px">(real Gmail for task notifications)</span></label><input type="email" id="uNotifEmail" placeholder="real email for notifications"/></div>
-      <div class="form-group"><label>Phone Number</label><input type="tel" id="uPhone" placeholder="Enter phone number"/></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group">
-        <label>Department</label>
-        <select id="uDeptSelect" onchange="uDeptSelectChange()">
-          <option value="">— Select Department —</option>
-          <option value="__new__">+ Add New Department</option>
-        </select>
-        <!-- Same id the rest of this file already reads/writes (openEditUser,
-             saveUser, openAddUser's reset list) — kept as the one place the
-             value actually lives, so none of that code needed to change.
-             Hidden unless "+ Add New Department" is picked, or an existing
-             user's department is not (yet) in the dropdown's known list. -->
-        <input type="text" id="uDepartment" placeholder="Type new department name" style="display:none;margin-top:8px" oninput="document.getElementById('uDeptSelect').value='__new__'"/>
-      </div>
-      <div class="form-group" id="uPositionGroup"><label>Position <span style="color:#94a3b8;font-weight:400;font-size:11px">(only for the team welcome message)</span></label><input type="text" id="uPosition" placeholder="e.g. Video Editor, SEO Executive"/></div>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>Birthday <span id="uBirthdayReq" style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uBirthday"/></div>
-      <div class="form-group"><label>Joining Date <span id="uJoiningReq" style="color:#e53e3e;font-size:11px">*</span></label><input type="date" id="uJoiningDate"/></div>
-    </div>
-    <div class="form-group">
-      <label>Password <span id="pwdOptional" style="color:#94a3b8;font-weight:400;text-transform:none">(leave blank to keep current)</span></label>
-      <input type="password" id="uPassword" placeholder="Enter password"/>
-    </div>
-    <div class="form-row">
-      <div class="form-group"><label>App Role <span style="color:#94a3b8;font-weight:400;font-size:11px">(app permissions)</span></label>
-        <select id="uRole">
-          <option value="user">User</option>
-          <option value="hod">HOD</option>
-          <option value="pc">PC (View + Approve)</option>
-          <option value="admin">Admin</option>
-        </select>
-      </div>
-      <div class="form-group"><label>User Role <span style="color:#94a3b8;font-weight:400;font-size:11px">(leave approval hierarchy)</span></label>
-        <select id="uUserRole">
-          <option value="user">User</option>
-          <option value="hod">HOD</option>
-          <option value="pc">PC</option>
-          <option value="admin">Admin</option>
-        </select>
-      </div>
-    </div>
-    <!-- Page access checkboxes — admin grants extra page visibility to non-admin users without code changes -->
-    <div class="form-group" style="background:#f8fafc;border:1.5px solid #e2e8f0;border-radius:8px;padding:12px;margin-top:6px">
-      <label style="margin:0 0 8px;font-size:12px;color:#1e293b;letter-spacing:.3px">
-        🔓 Extra Page Access
-        <span style="color:#94a3b8;font-weight:400;text-transform:none;font-size:11px">(non-admin users — tick what they can see)</span>
-      </label>
-      <div id="uExtraAccessGrid" style="display:grid;grid-template-columns:repeat(2,1fr);gap:6px;font-size:12px"></div>
-      <div style="font-size:11px;color:#64748b;margin-top:6px">Admins always see everything; ticks here only matter for HOD / PC / User accounts.</div>
-    </div>
-
-    <!-- Off-days are managed globally via the Holiday tab (applies to all users) -->
-    <div class="form-group" style="background:#eff6ff;border:1.5px solid #bfdbfe;border-radius:8px;padding:9px 12px;margin-top:6px">
-      <div style="font-size:12px;color:#1e40af;line-height:1.5">
-        ℹ️ <b>Week off / holidays</b> are managed globally from the <b>Holiday tab</b> (Dashboard → 🗓 Holidays). Same off-days apply to all users.
-      </div>
-    </div>
-    <!-- Exclude from Daily Reminder -->
-    <div class="form-group" style="background:#fef3c7;border:1.5px solid #fcd34d;border-radius:8px;padding:10px 12px;margin-top:6px">
-      <label style="display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;font-weight:500;color:#78350f">
-        <input type="checkbox" id="uExcludeReminder" style="accent-color:var(--brand-2);width:16px;height:16px;cursor:pointer"/>
-        🚫 Exclude from Daily Reminder
-      </label>
-      <div style="font-size:11px;color:#92400e;margin-top:4px;margin-left:24px">
-        This user will <b>not</b> appear in the 8:00 PM daily reminder (use to exclude beyond CXO)
-      </div>
-    </div>
-    <div class="modal-footer" style="justify-content:space-between">
-      <button class="btn btn-outline" onclick="closeModal('userModal')">Cancel</button>
-      <button class="btn btn-primary" onclick="saveUser()">Save</button>
-    </div>
-    <!-- Bulk Upload — always visible at bottom -->
-    <div class="bulk-section">
-      <label style="font-size:12px;font-weight:600;color:#374151;text-transform:uppercase;letter-spacing:.4px">Bulk Add Users (CSV)</label>
-      <div class="file-row">
-        <input type="file" id="bulkUserFile" accept=".csv" style="font-size:12px;"/>
-        <button class="btn btn-outline btn-sm" onclick="uploadUsersCSV()">Upload CSV</button>
-        <button class="btn btn-outline btn-sm" onclick="downloadUserSample()">Sample</button>
-      </div>
-    </div>
-  </div>
-</div>
 <!-- The Add / Edit User form above as a React pop-up (frontend/src/pages/UserForm.jsx);
      openAddUser / openEditUser route here, #userModal is the fallback. -->
 <div id="userFormRoot" data-react="1" data-react-quiet="1"></div>
@@ -4086,7 +3989,7 @@ try { var _d = localStorage.getItem('appNvDay'); if (_t === 'navratri' && /^[1-9
 <script src="/js/sidebar-search.js?v=20261117a"></script>
 <script src="/js/tasks.js?v=20261117a"></script>
 <script src="/js/tasks-report.js?v=20261107b"></script>
-<script src="/js/users.js?v=20261123a"></script>
+<script src="/js/users.js?v=20261123b"></script>
 <script src="/js/helpers.js?v=20261117a"></script>
 <script src="/js/fms.js?v=20261109a"></script>
 <script src="/js/daily.js?v=20261123a"></script>
