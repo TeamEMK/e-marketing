@@ -3741,7 +3741,7 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
   try {
     // `position` is not a users column — it is sent by the Add User form for the
     // team welcome announcement below and nothing else.
-    const { name, email, notification_email, password, role, user_role, phone, department, position, week_off, extra_off, exclude_from_reminder, extra_access, birthday, joining_date } = req.body;
+    const { name, email, notification_email, password, role, user_role, phone, department, position, announce, week_off, extra_off, exclude_from_reminder, extra_access, birthday, joining_date } = req.body;
     if (!name || !email || !password) return res.status(400).json({ error: 'All fields required' });
     const [ex] = await db.query('SELECT id FROM users WHERE email=?', [email]);
     if (ex[0]) return res.status(400).json({ error: 'Email already exists' });
@@ -3765,7 +3765,14 @@ app.post('/api/users', requireAuth, requireAdmin, async (req, res) => {
     const _jaFirst = joinedAs.split(/\s+/)[0] || '';
     const joinedArticle = (/^[A-Z]{2,}$/.test(_jaFirst) ? /^[AEFHILMNORSX]/.test(_jaFirst) : /^[aeiouAEIOU]/.test(_jaFirst)) ? 'an' : 'a';
     const welcomeMsg = `Hello Team,\nPlease join me in welcoming ${name} our new team member who has joined us as ${joinedArticle} ${joinedAs}.\nWe are excited to have them on board and look forward to working together.\nWelcome to the team, ${name}! 🌸`;
-    sendWhatsAppRaw('919602694444-1618492040@g.us', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
+    // The Add User form carries an "Announce to the team group" switch, on by
+    // default and reset to on every time the form opens, so turning it off
+    // applies to that one person only. Only `false` suppresses the message:
+    // every other caller (bulk import, scripts, an older form) sends no
+    // `announce` at all and keeps the old behaviour.
+    if (announce !== false) {
+      sendWhatsAppRaw('919602694444-1618492040@g.us', welcomeMsg).catch(e => console.error('WA team welcome err:', e.message));
+    }
     // Append new user to Google Sheet
     const SHEET_ID = '1k8GTp731LMNE6E1_FwNO8yvGJu7ogo-4PX6c7JP4emM';
     const fmtDate = d => { if (!d) return ''; const [y,m,dd] = d.split('-'); return `${dd}/${m}/${y}`; };

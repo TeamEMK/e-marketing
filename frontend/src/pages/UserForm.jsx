@@ -22,6 +22,9 @@ function UserFormBody({ data, onClose }) {
   const [f, setF] = useState(() => ({
     name: u ? u.name || '' : '', email: u ? u.email || '' : '', notification_email: u ? u.notification_email || '' : '',
     phone: u ? u.phone || '' : '', position: '', birthday: u ? day(u.birthday) : '', joining_date: u ? day(u.joining_date) : '',
+    // On for every new user. The form is built fresh each time it opens, so
+    // turning it off applies to that one person and never carries over.
+    announce: true,
     password: '', role: known(APP_ROLES, u ? u.role || 'user' : 'user'),
     user_role: known(USER_ROLES, u ? u.user_role || u.role || 'user' : 'user'), exclude: u ? !!u.exclude_from_reminder : false,
   }));
@@ -69,7 +72,7 @@ function UserFormBody({ data, onClose }) {
     };
     // Send-only on create: nothing stores it, the POST just puts it in the
     // welcome message.
-    if (!id) body.position = f.position.trim();
+    if (!id) { body.position = f.position.trim(); body.announce = f.announce; }
     if (f.password) body.password = f.password;
     const r = id ? await api(`/api/users/${id}`, 'PUT', body) : await api('/api/users', 'POST', body);
     if (r.error) return setErr(r.error);
@@ -105,6 +108,23 @@ function UserFormBody({ data, onClose }) {
         </div>
         {/* Position only feeds the WhatsApp welcome announcement, so it shows on Add only. */}
         {id ? null : <div className="form-group"><label>Position <span ref={css(HINT)}>(only for the team welcome message)</span></label><input type="text" placeholder="e.g. Video Editor, SEO Executive" value={f.position} onChange={e => set('position', e.target.value)} /></div>}
+        {/* Sits with Position because the two feed the same message. On every
+            time the form opens; off stops the group WhatsApp for this one
+            person and nothing else — the login email and the Sheet row still
+            go out. Create only: editing someone announces nothing. */}
+        {id ? null : (
+          <div className="form-group" ref={css('margin-top:-4px')}>
+            <label ref={css('display:flex;align-items:center;gap:8px;cursor:pointer;text-transform:none;letter-spacing:0;margin:0;font-weight:500;color:#334155')}>
+              <input type="checkbox" checked={f.announce} onChange={e => set('announce', e.target.checked)} ref={css('accent-color:var(--brand-2);width:16px;height:16px;cursor:pointer')} />
+              📣 Announce to the team group
+            </label>
+            <div ref={css('font-size:11px;color:#94a3b8;margin-top:4px;margin-left:24px')}>
+              {f.announce
+                ? 'A welcome message goes to the team WhatsApp group when this user is created.'
+                : 'No message will go to the group. The login email and the Sheet entry still go out.'}
+            </div>
+          </div>
+        )}
       </div>
       <div className="form-row">
         <div className="form-group"><label>Birthday {id ? null : <span ref={css('color:#e53e3e;font-size:11px')}>*</span>}</label><input type="date" value={f.birthday} onChange={e => set('birthday', e.target.value)} /></div>
