@@ -3958,6 +3958,36 @@ app.post('/api/users/:id/deactivate', requireAuth, requireAdmin, async (req, res
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// GET /api/users/deactivated — the people Deactivate removed, so the Users page
+// can list them below the active ones with an Activate button instead of
+// leaving them to be found in Logs. Deactivate archives the row and deletes it
+// (see /api/users/:id/deactivate), so the only record of them is the archive.
+// Activate is the ordinary restore: POST /api/deleted-records/:id/restore.
+// Only display fields are sent — record_data also holds the password hash.
+app.get('/api/users/deactivated', requireAuth, requireAdmin, async (req, res) => {
+  try {
+    const [rows] = await db.query(
+      `SELECT id, record_id, record_data, deleted_by_name, delete_reason,
+              DATE_FORMAT(deleted_at, '%d %b %Y') AS deleted_on
+         FROM deleted_records
+        WHERE source_table='users' AND restored_at IS NULL
+        ORDER BY deleted_at DESC, id DESC
+        LIMIT 200`);
+    const out = [];
+    for (const r of rows) {
+      let d = {};
+      try { d = JSON.parse(r.record_data) || {}; } catch (e) { continue; }
+      out.push({
+        archive_id: r.id, id: r.record_id,
+        name: d.name || '', email: d.email || '', phone: d.phone || '',
+        department: d.department || '', role: d.role || 'user', user_role: d.user_role || '',
+        deleted_on: r.deleted_on, deleted_by_name: r.deleted_by_name || '', reason: r.delete_reason || '',
+      });
+    }
+    res.json(out);
+  } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 // ── Pending tasks of removed accounts (Users → 🧹) ───────────────────────
 // Tasks whose doer's account is gone — deleted before the delete archive kept
 // names, so the lists can only say "— deleted user —". GET lists them by the

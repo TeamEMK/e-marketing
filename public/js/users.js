@@ -24,7 +24,29 @@ async function loadUsers() {
   const deptBtn = document.getElementById('usersDeptBtn');
   if (!_usersActReact({ dept: !!(ME && ME.role === 'admin') }) && deptBtn) deptBtn.style.display = ME && ME.role === 'admin' ? '' : 'none';
   allUsersData = await api('/api/users');
+  // Deactivate archives the row and deletes it, so the only trace of a
+  // deactivated person is in Logs. Admins get them listed under the active
+  // people instead, with an Activate button. Best-effort: a failure here must
+  // not cost us the Users table.
+  _usersGone = [];
+  if (ME && ME.role === 'admin') {
+    const gone = await api('/api/users/deactivated').catch(() => null);
+    if (Array.isArray(gone)) _usersGone = gone;
+  }
+  _usersGoneShown = _usersGone;
   renderUsersTable(allUsersData);
+}
+
+// Bring a deactivated person back. This is the same restore the Logs page
+// runs; the row goes back into `users` with its old id and everything on it.
+// Tasks that moved to someone else at deactivation stay with them.
+async function activateUser(archiveId, name) {
+  const who = name || 'this user';
+  if (!await appConfirm(`${who} will be able to sign in again and will show in every list. Tasks that were moved to someone else stay with them.`, `Activate ${who}?`)) return;
+  const r = await api(`/api/deleted-records/${archiveId}/restore`, 'POST', {});
+  if (!r || r.error) { appAlert((r && r.error) || 'Could not activate', 'Error'); return; }
+  showToast(`✅ ${who} is active again`);
+  loadUsers();
 }
 
 // ── Departments (admin): add one before anyone is in it ──
@@ -45,17 +67,18 @@ async function deptMgrSend(method, name) {
   return r;
 }
 
+// Search covers the deactivated rows too — someone looking for a name should
+// find them whether or not the account is still active.
 function filterUsers() {
   const q = (document.getElementById('userSearch')?.value||'').toLowerCase().trim();
-  if (!q) { renderUsersTable(allUsersData); return; }
-  const filtered = allUsersData.filter(u =>
+  const match = u =>
     (u.name||'').toLowerCase().includes(q) ||
     (u.email||'').toLowerCase().includes(q) ||
     (u.department||'').toLowerCase().includes(q) ||
     (u.role||'').toLowerCase().includes(q) ||
-    (u.phone||'').includes(q)
-  );
-  renderUsersTable(filtered);
+    (u.phone||'').includes(q);
+  _usersGoneShown = q ? _usersGone.filter(match) : _usersGone;
+  renderUsersTable(q ? allUsersData.filter(match) : allUsersData);
 }
 
 function downloadUsersCSV() {
@@ -86,16 +109,19 @@ const _usersMap = {};
 // The table rows are a React page (frontend/src/pages/UsersRows.jsx), mounted
 // into #usersTbody since 2026-10-30. Search, Add, CSV and the Edit form stay
 // here; renderUsersTable() hands the filtered list to the React rows.
-let USERS_REACT = null;   // fn(users) from the React rows
+let USERS_REACT = null;   // fn({ users, gone }) from the React rows
 let _usersShown = null;   // the list most recently handed over
-function usersSetReact(fn) { USERS_REACT = fn; if (fn && _usersShown) fn(_usersShown); }
+let _usersGone = [];        // deactivated people, read back from the delete archive
+let _usersGoneShown = [];   // the same list after the search box, like the active rows
+const _usersView = () => ({ users: _usersShown || [], gone: _usersGoneShown });
+function usersSetReact(fn) { USERS_REACT = fn; if (fn && _usersShown) fn(_usersView()); }
 
 function renderUsersTable(users) {
   const tbody = document.getElementById('usersTbody');
   if (tbody && tbody.dataset.react) {
     _usersShown = users;
     users.forEach(u => { _usersMap[u.id] = u; });   // openEditUser(id) reads these
-    if (USERS_REACT) return USERS_REACT(users);
+    if (USERS_REACT) return USERS_REACT(_usersView());
     return emkReactMount('users', tbody);
   }
 }
