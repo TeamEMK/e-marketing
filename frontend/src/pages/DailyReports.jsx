@@ -93,12 +93,31 @@ const hr = m => `${(m / 60).toFixed(1)} hr`;
 const weekday = d => { const x = new Date(d + 'T00:00:00'); return isNaN(x) ? '' : x.toLocaleDateString('en-GB', { weekday: 'short' }); };
 const EW = () => <>{' '}<span ref={css('background:#dcfce7;color:#15803d;font-weight:700;font-size:10px;padding:1px 5px;border-radius:5px')} title="Approved Extra Working">EW</span></>;
 
+// The route answers a from/to range as well as a month, but it reports the
+// month as `month || from.slice(0,7)` — so a range reads as the month it starts
+// in. Over "24 Nov 2025 to 24 Nov 2026" the card said "November 2025" while
+// every figure beside it covered the whole year. Compare the range against the
+// month it claims and say which one this actually is.
+const dayFmt = s => { const x = new Date(s + 'T00:00:00'); return isNaN(x) ? s : x.toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' }); };
+function drRange(d) {
+  const month = d.month || '';
+  const first = month + '-01';
+  const lastDay = month ? new Date(Number(month.slice(0, 4)), Number(month.slice(5, 7)), 0).getDate() : 0;
+  const last = month + '-' + String(lastDay).padStart(2, '0');
+  const custom = !!(d.from && d.to) && (d.from !== first || d.to !== last);
+  return {
+    custom,
+    label: custom ? `${dayFmt(d.from)} – ${dayFmt(d.to)}`
+      : new Date(first).toLocaleString('en-US', { month: 'long', year: 'numeric' }),
+  };
+}
+
 function Stats({ d }) {
-  const monthLabel = new Date(d.month + '-01').toLocaleString('en-US', { month: 'long', year: 'numeric' });
+  const r = drRange(d);
   const n = d.summary.length;
   return (
     <>
-      <div className="dr-stat"><div className="dr-stat-label">Month</div><div className="dr-stat-value" ref={css('font-size:20px')}>{monthLabel}</div></div>
+      <div className="dr-stat"><div className="dr-stat-label">{r.custom ? 'Date range' : 'Month'}</div><div className="dr-stat-value" ref={css(r.custom ? 'font-size:15px;line-height:1.35' : 'font-size:20px')}>{r.label}</div></div>
       <div className="dr-stat"><div className="dr-stat-label">Total Entries</div><div className="dr-stat-value">{d.total_entries}</div><div className="dr-stat-sub">{`across ${n} user${n === 1 ? '' : 's'}`}</div></div>
       <div className="dr-stat"><div className="dr-stat-label">Total Time</div><div className="dr-stat-value">{d.total_minutes}<span ref={css('font-size:14px')}> min</span></div><div className="dr-stat-sub">{`≈ ${(d.total_minutes / 60).toFixed(1)} hours`}</div></div>
       <div className="dr-stat"><div className="dr-stat-label">Active Users</div><div className="dr-stat-value">{n}</div><div className="dr-stat-sub">submitted at least once</div></div>
@@ -107,7 +126,8 @@ function Stats({ d }) {
 }
 
 function Summary({ d }) {
-  if (!d.summary.length) return <div className="empty">No submissions in this month yet.</div>;
+  // "this month" is wrong when a from/to range is in use — say which it is.
+  if (!d.summary.length) return <div className="empty">{drRange(d).custom ? 'No submissions in this date range.' : 'No submissions in this month yet.'}</div>;
   return (
     <table className="dr-table">
       <thead><tr><th>User</th><th>Department</th><th>Days Filled</th><th>Total Tasks</th><th>Total Minutes</th><th>Hours</th><th>Avg/Day</th></tr></thead>
