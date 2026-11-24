@@ -62,8 +62,13 @@ function UserFormBody({ data, onClose }) {
     if (!name || !email) return setErr('Name and email required');
     // Required only for a new user. Editing an existing one must not be blocked
     // by a date nobody recorded when the account was made.
-    if (!id && !f.birthday) return setErr('Birthday is required');
-    if (!id && !f.joining_date) return setErr('Joining date is required');
+    // Required only when the team group is being told about this person: the
+    // announcement and the birthday reminders are what those two dates feed.
+    // Adding someone with the announcement off — a stand-in account, or one
+    // whose dates nobody has yet — should not be blocked by them. The column
+    // takes NULL and POST /api/users never asked for either.
+    if (!id && f.announce && !f.birthday) return setErr('Birthday is required');
+    if (!id && f.announce && !f.joining_date) return setErr('Joining date is required');
     if (!id && !f.password) return setErr('Password required for new user');
     const body = {
       name, email, notification_email: f.notification_email.trim(), role: f.role, user_role: f.user_role,
@@ -127,8 +132,11 @@ function UserFormBody({ data, onClose }) {
         )}
       </div>
       <div className="form-row">
-        <div className="form-group"><label>Birthday {id ? null : <span ref={css('color:#e53e3e;font-size:11px')}>*</span>}</label><input type="date" value={f.birthday} onChange={e => set('birthday', e.target.value)} /></div>
-        <div className="form-group"><label>Joining Date {id ? null : <span ref={css('color:#e53e3e;font-size:11px')}>*</span>}</label><input type="date" value={f.joining_date} onChange={e => set('joining_date', e.target.value)} /></div>
+        {/* The star follows the rule above, so it never asks for something the
+            form will accept without. It disappears the moment the announcement
+            is switched off. */}
+        <div className="form-group"><label>Birthday {!id && f.announce ? <span ref={css('color:#e53e3e;font-size:11px')}>*</span> : null}</label><input type="date" value={f.birthday} onChange={e => set('birthday', e.target.value)} /></div>
+        <div className="form-group"><label>Joining Date {!id && f.announce ? <span ref={css('color:#e53e3e;font-size:11px')}>*</span> : null}</label><input type="date" value={f.joining_date} onChange={e => set('joining_date', e.target.value)} /></div>
       </div>
       <div className="form-group">
         <label>Password {id ? <span ref={css('color:#94a3b8;font-weight:400;text-transform:none')}>(leave blank to keep current)</span> : null}</label>
