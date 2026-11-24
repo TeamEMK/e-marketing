@@ -628,6 +628,7 @@ function drFilterVals(){
     search: document.getElementById('drSearch')?.value || '',
     type: document.getElementById('drTypeFilter')?.value || 'daily',
     user: document.getElementById('drUserFilter')?.value || '',
+    weekend: false,
   };
 }
 function drClientState(){ return { opts: DR_CLIENT_OPTS, sel: [...DR_CLIENT_SEL], handled: DR_CLIENT_OPTS.filter(drDoerHandles) }; }
@@ -735,6 +736,21 @@ function drBaseEntries(){
   return DR_DATA.entries;
 }
 
+// Weekend / Extra Working view: keep only the days that are a Saturday or a
+// Sunday, or that carry approved Extra Working. A day that is both — someone
+// worked a Sunday AND filed extra working for it — is ONE day, not two: the
+// grouping already keys days by date, so both records land on the same row.
+// Its time is handled in drGroupEntries.
+const drIsWeekend = d => { const x = new Date(d + 'T00:00:00'); const n = x.getDay(); return !isNaN(x) && (n === 0 || n === 6); };
+function drWeekendOnly(){ return !!drFilterVals().weekend; }
+function drKeepWeekendEw(entries){
+  // Which (doer, date) pairs carry Extra Working — so a weekday with EW is kept
+  // and the daily-task entries on that same day come with it.
+  const ewDays = new Set();
+  for (const e of entries) if (e.extra_working) ewDays.add(`${e.user_id}|${e.entry_date}`);
+  return entries.filter(e => drIsWeekend(e.entry_date) || ewDays.has(`${e.user_id}|${e.entry_date}`));
+}
+
 function drFilteredEntries(){
   if (!DR_DATA) return [];
   const { search: rawSearch, user: userId } = drFilterVals();
@@ -742,6 +758,7 @@ function drFilteredEntries(){
   let entries = drBaseEntries();
   if (userId) entries = entries.filter(e => String(e.user_id) === String(userId));
   if (DR_CLIENT_SEL.size) entries = entries.filter(e => DR_CLIENT_SEL.has(e.client_name));
+  if (drWeekendOnly()) entries = drKeepWeekendEw(entries);
   if (search) {
     entries = entries.filter(e =>
       String(e.doer_name || '').toLowerCase().includes(search) ||
@@ -770,8 +787,24 @@ function drGroupEntries(entries){
     day.min += m;
     day.entries.push(e);
     if (e.extra_working) day.ew = true;
+    // Kept apart so the weekend view can stop the same work being counted
+    // twice: a Sunday often carries both a daily-task entry and an approved
+    // Extra Working for the same hours.
+    if (e.extra_working) day.ewMin = (day.ewMin || 0) + m; else day.dailyMin = (day.dailyMin || 0) + m;
     const c = e.client_name || '—';
     day.clients.set(c, (day.clients.get(c) || 0) + m);
+  }
+  // In the weekend / Extra Working view a day that has both records counts the
+  // LARGER of the two, not their sum — it is one day's work written down in two
+  // places. Every other view keeps the plain total it always had.
+  if (drWeekendOnly()) {
+    for (const d of byDoer.values()) {
+      d.min = 0;
+      for (const day of d.days.values()) {
+        if (day.ewMin && day.dailyMin) day.min = Math.max(day.ewMin, day.dailyMin);
+        d.min += day.min;
+      }
+    }
   }
   return [...byDoer.values()]
     .sort((a, b) => String(a.name).localeCompare(String(b.name)))

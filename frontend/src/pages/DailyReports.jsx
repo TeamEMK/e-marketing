@@ -27,7 +27,7 @@ function DrFilters({ text }) {
     document.addEventListener('click', away);
     return () => document.removeEventListener('click', away);
   }, [open]);
-  const f = legacy('drFilterVals') || { search: '', type: 'daily', user: '' };
+  const f = legacy('drFilterVals') || { search: '', type: 'daily', user: '', weekend: false };
   const set = patch => legacy('drSetFilters', { ...f, ...patch });
   const relist = () => { legacy('renderDREntriesUserDropdown'); legacy('renderDREntriesClientDropdown'); legacy('renderDREntries'); };
   const people = new Map();
@@ -41,6 +41,22 @@ function DrFilters({ text }) {
     <>
       <input type="text" placeholder="🔍 Search by name / client / description..." value={f.search} onChange={e => set({ search: e.target.value })} />
       <SearchSelect value={f.type} onChange={v => { legacy('drSetFilters', { ...f, type: v }); relist(); }} options={TYPES} />
+      {/* Weekend / Extra Working. A Sunday that also carries approved Extra
+          Working is one day, and its time is counted once — see drGroupEntries. */}
+      <label title="Only Saturdays, Sundays and days with approved Extra Working. A day that is both counts once."
+        ref={css('display:flex;align-items:center;gap:7px;padding:9px 13px;border:1.5px solid ' + (f.weekend ? '#16a34a' : '#e2e8f0')
+          + ';border-radius:8px;background:' + (f.weekend ? '#f0fdf4' : '#fff') + ';font-size:13px;cursor:pointer;white-space:nowrap;color:'
+          + (f.weekend ? '#15803d' : '#475569') + ';font-weight:' + (f.weekend ? '700' : '500'))}>
+        {/* Ticking it also switches Type to "Daily Task + Extra Working": with
+            Type on Daily Task the Extra Working rows are never loaded, so the
+            EW half of this filter could never match and the answer would be
+            quietly half right. The Type box visibly changes, so nothing is
+            hidden from whoever ticked it. */}
+        <input type="checkbox" checked={!!f.weekend}
+          onChange={e => { const on = e.target.checked; legacy('drSetFilters', { ...f, weekend: on, type: on ? 'all' : f.type }); relist(); }}
+          ref={css('accent-color:#16a34a;width:15px;height:15px;cursor:pointer;margin:0')} />
+        Sat / Sun / EW only
+      </label>
       <SearchSelect value={doers.some(o => o.value === String(f.user)) ? String(f.user) : ''} onChange={v => { legacy('drSetFilters', { ...f, user: v }); relist(); }} options={doers} placeholder="All Doers" />
       <div className="multi-select-wrap" ref={css('min-width:220px')}>
         <button type="button" onClick={e => { e.stopPropagation(); setQ(''); setOpen(o => !o); }}
@@ -177,9 +193,20 @@ export default function DailyReports() {
   else if (loading || !data) { stats = loadingBox; summary = loadingBox; entries = loadingBox; }
   else {
     const list = legacy('drFilteredEntries') || [];
-    const totalMin = list.reduce((s, e) => s + (e.duration_min || 0), 0);
     const users = new Set(list.map(e => e.user_id)).size;
-    filterText = list.length ? `${list.length} entries · ${users} ${users === 1 ? 'doer' : 'doers'} · ${totalMin} min (${(totalMin / 60).toFixed(1)} hr)` : '';
+    const who = `${users} ${users === 1 ? 'doer' : 'doers'}`;
+    if (legacy('drWeekendOnly')) {
+      // Days are the unit here, not entries: one Saturday is one day however
+      // many lines were written for it. The minutes come from the grouping,
+      // which already counts a day that has both records only once.
+      const gs = legacy('drGroupEntries', list) || [];
+      const days = gs.reduce((s, g) => s + g.days.length, 0);
+      const mins = gs.reduce((s, g) => s + (g.min || 0), 0);
+      filterText = days ? `${days} ${days === 1 ? 'day' : 'days'} · ${who} · ${mins} min (${(mins / 60).toFixed(1)} hr)` : '';
+    } else {
+      const totalMin = list.reduce((s, e) => s + (e.duration_min || 0), 0);
+      filterText = list.length ? `${list.length} entries · ${who} · ${totalMin} min (${(totalMin / 60).toFixed(1)} hr)` : '';
+    }
     stats = <Stats d={data} />;
     summary = <Summary d={data} />;
     entries = <Entries entries={list} redraw={redraw} />;
