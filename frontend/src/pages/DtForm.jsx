@@ -51,8 +51,15 @@ export default function DtForm() {
       locked = !!hit;
       if (hit) notice = <>🔒 Extra Working for this date is already submitted — status: <b>{hit.status}</b>.{hit.status === 'pending' ? ' Delete it from Leave Tracker if you need to change it.' : ''}</>;
     } else {
-      try { const r = await api('/api/daily-tasks/status?date=' + day); locked = !!r.submitted; } catch (e) { locked = false; }
-      if (locked) notice = '🔒 You have already submitted for this date — entries are now locked.';
+      // The status also carries the filing time, so a reopened page still says
+      // when the day was filed.
+      let filedAt = '';
+      try {
+        const r = await api('/api/daily-tasks/status?date=' + day);
+        locked = !!r.submitted;
+        filedAt = r.submitted_at || '';
+      } catch (e) { locked = false; }
+      if (locked) notice = `🔒 You have already submitted for this date${filedAt ? ` at ${filedAt}` : ''} — entries are now locked.`;
     }
     if (!locked) { setRows([newRow(null, depts)]); legacy('ewAttachReset', 'dt'); setAttachTick(t => t + 1); }
     setCheck(c => ({ locked, notice: notice !== null ? notice : (c && c.notice) }));

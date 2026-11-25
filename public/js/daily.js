@@ -575,12 +575,15 @@ async function dtCheckLockAndRender(){
         (hit.status === 'pending' ? ' Delete it from Leave Tracker if you need to change it.' : '');
     }
   } else {
+    let filedAt = '';
     try {
       const r = await api('/api/daily-tasks/status?date=' + date);
       DT_LOCKED = !!r.submitted;
+      filedAt = r.submitted_at || '';
     } catch(e) { DT_LOCKED = false; }
     if (DT_LOCKED) {
-      lockNotice.textContent = '🔒 You have already submitted for this date — entries are now locked.';
+      lockNotice.textContent = '🔒 You have already submitted for this date'
+        + (filedAt ? ` at ${filedAt}` : '') + ' — entries are now locked.';
     }
   }
 
@@ -757,7 +760,7 @@ async function dtSubmitSend(date, read, setText){
   try {
     const r = await api('/api/daily-tasks', 'POST', { entry_date: date, rows });
     if (r.error) { showToast(r.error, 'error'); return false; }
-    showToast(`✅ ${r.count} entries submitted! Confirmation sent on email.`);
+    showToast(`✅ ${r.count} entries submitted${r.submitted_at ? ` at ${r.submitted_at}` : ''}! Confirmation sent on email.`);
     return true;
   } catch(e) {
     showToast('Submit failed: ' + e.message, 'error');

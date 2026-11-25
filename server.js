@@ -9166,11 +9166,16 @@ app.get('/api/departments', requireAuth, async (req, res) => {
 app.get('/api/daily-tasks/status', requireAuth, async (req, res) => {
   try {
     const date = req.query.date || new Date(Date.now() + 5.5 * 60 * 60 * 1000).toISOString().split('T')[0];
-    const [[{ cnt }]] = await db.query(
-      'SELECT COUNT(*) AS cnt FROM daily_tasks WHERE user_id=? AND entry_date=?',
+    // The filing time comes back with the lock, so a reopened page can still
+    // say when the day was filed. Formatted in SQL, like deleted_records:
+    // the pool sets no timezone, so mysql2 would shift a JS Date.
+    const [[{ cnt, submitted_at }]] = await db.query(
+      `SELECT COUNT(*) AS cnt,
+              DATE_FORMAT(MIN(created_at), '%h:%i %p') AS submitted_at
+       FROM daily_tasks WHERE user_id=? AND entry_date=?`,
       [req.session.userId, date]
     );
-    res.json({ submitted: cnt > 0, date });
+    res.json({ submitted: cnt > 0, date, submitted_at: cnt > 0 ? submitted_at : null });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -9286,7 +9291,13 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
       sendMail(target.email, `Daily Report Submitted — ${entry_date}`, html).catch(e => console.error('daily report email err:', e.message));
     }
 
-    res.json({ success: true, count: cleanRows.length });
+    // The filing time, so the page can tell the submitter when it was filed.
+    const [[{ submitted_at }]] = await db.query(
+      `SELECT DATE_FORMAT(MIN(created_at), '%h:%i %p') AS submitted_at
+       FROM daily_tasks WHERE user_id=? AND entry_date=?`,
+      [req.session.userId, entry_date]
+    );
+    res.json({ success: true, count: cleanRows.length, submitted_at });
   } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
