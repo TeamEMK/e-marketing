@@ -55,3 +55,4 @@ __pycache__/
 # extract. Nothing here is required by the app — db.py reads ../.env, which is
 # the only path that points back out.
 local/
+README.md
