@@ -918,8 +918,9 @@ function dashPerfColor(kind){
   return { top: '#F59E0B', bottom: '#F43F5E', active: '#FB923C' }[kind];
 }
 // True while the amber dashboard widgets (KPI trend lines, the ring with its total, rank lists) show: on
-// the everyday amber look (css/amber.css), and under Diwali, which is built on it (css/themes/diwali-amber.css).
-function dashAmberOn() { const t = document.documentElement.getAttribute('data-theme'); return !t || t === 'diwali'; }
+// the everyday amber look (css/amber.css), and under Diwali and Chhath, which are built on it
+// (css/themes/<theme>-amber.css, made by scripts/build-theme-amber.js).
+function dashAmberOn() { const t = document.documentElement.getAttribute('data-theme'); return !t || t === 'diwali' || t === 'chhath'; }
 
 // Writes the total in the hole of the Task Overview ring.
 const dashRingCenter = {

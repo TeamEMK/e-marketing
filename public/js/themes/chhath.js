@@ -1,112 +1,206 @@
-/* Chhath Puja decoration: a vrati standing in the river at the ghat (bottom-right), raising a soop of
-   thekua, bananas and a coconut as arghya to the setting sun, its reflection shimmering on the water;
-   a kosi of sugarcane stalks with a lamp and a daura basket (bottom-left); diyas floating on the water;
-   "🌅 जय छठी मइया"; golden glints rising (the canvas). Movement is css (css/themes/chhath.css). */
+/* Chhath Puja decoration: a day at the ghat along the foot of the page (story() below). A man brings the
+   daura of offerings on his head while the women on the steps sing Chhath geet; the sun sinks into the river
+   and the vratis stand in the water with their soops raised, milk poured from a lota as arghya; night comes
+   with lamps floating on the water and stars; then the sun rises out of the river for the morning arghya,
+   and the wish. A soop of prasad and a kosi on the left, "🌅 जय छठी मइया" above them. The sky, sun, river,
+   lamps and stars are drawn on the canvas, the people and offerings are the user's paintings
+   (public/img/themes/chhath-<name>-<w>.webp); movement is css (css/themes/chhath.css). */
 ThemeDecor.register('chhath', function (d) {
-  var SKIN = '#C98B5B', LINE = '#6B3E1E';
-
-  function diya(x, y, delay) { // a floating clay lamp (.ch-float bobs it)
-    return '<g class="ch-float" style="animation-delay:' + delay + 's"><path d="M' + (x - 8) + ' ' + y + ' Q' + x + ' ' + (y + 7) + ' ' + (x + 8) + ' ' + y + ' Z" fill="#B45309" stroke="#78350F" stroke-width=".7"/>' +
-      '<path class="ch-flame" d="M' + x + ' ' + (y - 10) + ' C' + (x + 3) + ' ' + (y - 6) + ' ' + (x + 3) + ' ' + (y - 3) + ' ' + x + ' ' + (y - 1) + ' C' + (x - 3) + ' ' + (y - 3) + ' ' + (x - 3) + ' ' + (y - 6) + ' ' + x + ' ' + (y - 10) + ' Z" fill="#F97316"/>' +
-      '<circle cx="' + x + '" cy="' + (y - 5) + '" r="7" fill="#FDE047" fill-opacity=".3"/></g>';
+  // ART: [small width, its height, large width]
+  var ART = { soop: [150, 151, 300], kosi: [140, 186, 280], singers: [220, 142, 440], 'daura-man': [120, 272, 240],
+              'vrati-1': [120, 198, 240], 'lota-man': [120, 230, 240], 'vrati-2': [120, 275, 240] };
+  function art(name, px) {
+    var a = ART[name], base = '/img/themes/chhath-' + name;
+    return '<img src="' + base + '-' + a[0] + '.webp" srcset="' + base + '-' + a[0] + '.webp ' + a[0] + 'w, ' + base + '-' + a[2] + '.webp ' + a[2] + 'w"' +
+           ' sizes="' + px + 'px" width="' + a[0] + '" height="' + a[1] + '" alt="" draggable="false">';
   }
 
-  // The vrati in the river, the sun setting behind her.
-  var vrati =
-    '<svg viewBox="0 0 230 220" xmlns="http://www.w3.org/2000/svg"><defs>' +
-    '<radialGradient id="chSun"><stop offset="0" stop-color="#FFF7ED"/><stop offset=".35" stop-color="#FDBA74"/><stop offset=".7" stop-color="#F97316" stop-opacity=".7"/><stop offset="1" stop-color="#EA580C" stop-opacity="0"/></radialGradient>' +
-    '<linearGradient id="chWater" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#38BDF8" stop-opacity=".85"/><stop offset="1" stop-color="#0369A1" stop-opacity=".9"/></linearGradient>' +
-    '<linearGradient id="chSoop" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="#FCD34D"/><stop offset="1" stop-color="#B45309"/></linearGradient>' +
-    '<linearGradient id="chVratiShade" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#fff" stop-opacity=".3"/><stop offset=".45" stop-color="#fff" stop-opacity="0"/><stop offset="1" stop-color="#7C2D12" stop-opacity=".28"/></linearGradient>' +
-    '<linearGradient id="chVratiLimb" x1="0" y1="0" x2="1" y2="0"><stop offset="0" stop-color="#DDA070"/><stop offset="1" stop-color="#A8703F"/></linearGradient>' +
-    '<radialGradient id="chVratiFace" cx=".4" cy=".4" r=".7"><stop offset="0" stop-color="#E2A676"/><stop offset=".7" stop-color="' + SKIN + '"/><stop offset="1" stop-color="#9A6238"/></radialGradient></defs>' +
-    // the setting sun, large and low, its glow pulsing (.ch-sun)
-    '<circle class="ch-sun" cx="150" cy="80" r="70" fill="url(#chSun)"/>' +
-    '<circle cx="150" cy="80" r="32" fill="#FB923C"/><circle cx="150" cy="80" r="32" fill="#FDE047" fill-opacity=".35"/>' +
-    // the river: water across the foot, the sun's reflection in streaks (.ch-shimmer)
-    '<path d="M0 156 Q60 150 115 156 Q170 162 230 156 V220 H0 Z" fill="url(#chWater)"/>' +
-    '<g class="ch-shimmer"><path d="M128 166 H172 M134 176 H166 M140 186 H160 M144 196 H156" stroke="#FDBA74" stroke-width="3" stroke-linecap="round" opacity=".85"/></g>' +
-    '<path d="M10 172 q10 -3 20 0 M60 188 q10 -3 20 0 M190 178 q10 -3 20 0 M20 204 q10 -3 20 0" fill="none" stroke="#E0F2FE" stroke-width="1.2" opacity=".7"/>' +
-    // the vrati, standing knee-deep: a yellow saree with a red border, the pallu over her head
-    '<path d="M54 196 Q52 150 66 116 L96 116 Q110 150 108 196 Z" fill="#FACC15" stroke="#CA8A04" stroke-width="1"/>' +
-    '<path d="M54 196 Q81 204 108 196" fill="none" stroke="#DC2626" stroke-width="4"/>' +
-    '<path d="M62 120 Q80 150 100 196" fill="none" stroke="#DC2626" stroke-width="3"/>' +
-    '<path d="M54 196 Q52 150 66 116 L96 116 Q110 150 108 196 Z" fill="url(#chVratiShade)"/>' +
-    '<path d="M72 124 Q70 160 72 192 M80 124 Q80 160 82 194 M88 124 Q90 160 92 192" fill="none" stroke="#CA8A04" stroke-width=".8" opacity=".7"/>' +
-    '<path d="M50 164 Q81 172 112 164" fill="none" stroke="#38BDF8" stroke-width="5" opacity=".7"/>' +
-    // arms raised high holding the soop up to the sun
-    '<path d="M66 118 L60 92 L72 64 M96 118 L104 92 L94 64" fill="none" stroke="url(#chVratiLimb)" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/>' +
-    '<path d="M62 90 l6 2 M102 90 l-6 2" stroke="#DC2626" stroke-width="3"/>' +
-    '<path d="M68 72 l4 -1.4 M92 72 l-4 -1.4" stroke="#F5B70A" stroke-width="2"/>' +
-    '<ellipse cx="72" cy="64" rx="4" ry="3.4" fill="' + SKIN + '" stroke="' + LINE + '" stroke-width=".7"/><ellipse cx="94" cy="64" rx="4" ry="3.4" fill="' + SKIN + '" stroke="' + LINE + '" stroke-width=".7"/>' +
-    '<g class="ch-offer"><path d="M50 64 Q83 40 116 64 Q83 76 50 64 Z" fill="url(#chSoop)" stroke="#92400E" stroke-width="1.2"/>' +
-    '<path d="M56 62 Q83 46 110 62 M62 58 L70 66 M74 54 L80 68 M88 54 L92 68 M100 56 L104 66" fill="none" stroke="#92400E" stroke-width=".7"/>' +
-    // on the soop: thekua, a bunch of bananas, a coconut, a lamp
-    '<ellipse cx="66" cy="55" rx="6" ry="4" fill="#B45309"/><path d="M62 55 h8 M66 51 v8" stroke="#78350F" stroke-width=".7"/>' +
-    '<path d="M74 52 Q80 40 88 44 M76 54 Q82 42 90 48 M78 56 Q84 46 92 52" fill="none" stroke="#FACC15" stroke-width="3.4" stroke-linecap="round"/>' +
-    '<circle cx="100" cy="52" r="6" fill="#78350F"/><path d="M98 46 q2 -6 6 -4" fill="none" stroke="#A16207" stroke-width="1.4"/>' +
-    '<path d="M108 58 Q112 62 116 58 Z" fill="#B45309"/><path class="ch-flame" d="M112 48 C114.6 52 114.6 55 112 57 C109.4 55 109.4 52 112 48 Z" fill="#F97316"/></g>' +
-    // her head, looking up at the sun: the pallu over her hair, sindoor, a nose ring
-    '<path d="M76 108 Q81 112 86 108 L86 116 H76 Z" fill="#A86E40"/>' +
-    '<path d="M69 96 Q68 112 81 112 Q94 112 93 96 Q93 86 81 86 Q69 86 69 96 Z" fill="url(#chVratiFace)" stroke="' + LINE + '" stroke-width="1"/>' +
-    '<path d="M67 104 Q66 82 81 82 Q96 82 95 104 Q92 92 81 90 Q70 92 67 104 Z" fill="#FACC15" stroke="#DC2626" stroke-width="1.6"/>' +
-    '<path d="M67 104 Q66 82 81 82 Q96 82 95 104 Q92 92 81 90 Q70 92 67 104 Z" fill="url(#chVratiShade)"/>' +
-    '<path d="M71 96 Q73 90 81 90 Q89 90 91 96 Q88 92 81 92 Q74 92 71 96 Z" fill="#1C1917"/>' +
-    '<path d="M81 86 V92" stroke="#DC2626" stroke-width="1.6"/><circle cx="81" cy="94" r="1.4" fill="#DC2626"/>' +
-    '<path d="M74.4 96.2 Q76.6 95 78.8 96 M83.2 96 Q85.4 95 87.6 96.2" fill="none" stroke="#3B2314" stroke-width=".8" stroke-linecap="round"/>' +
-    '<path d="M74.6 98.6 Q76.8 96.6 79 98.6 Q76.8 99.8 74.6 98.6 Z M83 98.6 Q85.2 96.6 87.4 98.6 Q85.2 99.8 83 98.6 Z" fill="#fff" stroke="#1C1917" stroke-width=".55"/>' +
-    '<circle cx="76.8" cy="98" r="1" fill="#2B1A10"/><circle cx="85.2" cy="98" r="1" fill="#2B1A10"/><circle cx="77.1" cy="97.6" r=".35" fill="#fff"/><circle cx="85.5" cy="97.6" r=".35" fill="#fff"/>' +
-    '<path d="M81.4 99.6 Q82.2 102 80.6 102.4" fill="none" stroke="#8A5530" stroke-width=".7" stroke-linecap="round"/>' +
-    '<ellipse cx="75" cy="103" rx="2" ry="1.1" fill="#F87171" opacity=".35"/><ellipse cx="87" cy="103" rx="2" ry="1.1" fill="#F87171" opacity=".35"/>' +
-    '<path d="M77.6 105 Q81 108.6 84.4 105 Q81 106 77.6 105 Z" fill="#9F1239"/><path d="M78.4 105.3 Q81 106.3 83.6 105.3 L83.2 106 Q81 106.8 78.8 106 Z" fill="#fff"/>' +
-    '<circle cx="84.6" cy="102.4" r="1.6" fill="none" stroke="#F5B70A" stroke-width=".9"/>' +
-    // diyas floating on the water
-    diya(30, 180, 0) + diya(130, 206, -.8) + diya(196, 196, -1.6) + diya(176, 172, -.4) +
-    '</svg>';
-
-  // The kosi: sugarcane stalks tied into a canopy over a lamp, a daura basket of offerings beside it.
-  var kosi =
-    '<svg viewBox="0 0 150 170" xmlns="http://www.w3.org/2000/svg">' +
-    '<ellipse cx="70" cy="164" rx="66" ry="6" fill="#A16207" opacity=".3"/>';
-  [[22, -14], [46, -6], [94, 6], [118, 14]].forEach(function (c) {
-    kosi += '<path d="M' + c[0] + ' 164 L' + (70 + c[1] * .2) + ' 20" stroke="#4D7C0F" stroke-width="6" stroke-linecap="round"/>' +
-      '<path d="M' + c[0] + ' 164 L' + (70 + c[1] * .2) + ' 20" stroke="#A3E635" stroke-width="6" stroke-dasharray="1.6 18" stroke-linecap="butt" opacity=".8"/>';
-  });
-  kosi += '<path d="M70 20 Q52 6 40 14 M70 20 Q88 6 100 14 M70 20 Q58 -2 64 -6 M70 20 Q82 -2 76 -6" fill="none" stroke="#65A30D" stroke-width="3" stroke-linecap="round"/>' +
-    '<path d="M36 110 Q70 122 104 110" fill="none" stroke="#DC2626" stroke-width="3"/><path d="M36 110 Q70 122 104 110" fill="none" stroke="#FACC15" stroke-width="1.4" stroke-dasharray="3 3"/>' +
-    // the lamp under the canopy, an earthen pot
-    '<path d="M56 160 Q70 170 84 160 L80 148 H60 Z" fill="#B45309" stroke="#78350F" stroke-width="1"/>' +
-    '<path d="M60 148 Q70 154 80 148 Z" fill="#C2410C"/><path class="ch-flame" d="M70 132 C75 138 75 143 70 147 C65 143 65 138 70 132 Z" fill="#F97316"/>' +
-    '<circle cx="70" cy="140" r="12" fill="#FDE047" fill-opacity=".3"/>' +
-    // the daura basket beside it, piled with fruit
-    '<path d="M104 166 L100 140 H142 L138 166 Z" fill="#CA8A04" stroke="#92400E" stroke-width="1"/>' +
-    '<path d="M100 146 H142 M102 154 H140 M110 140 V166 M122 140 V166 M132 140 V166" stroke="#92400E" stroke-width=".8"/>' +
-    '<circle cx="110" cy="136" r="6" fill="#F97316"/><circle cx="122" cy="134" r="7" fill="#78350F"/><path d="M128 138 Q136 124 142 132" fill="none" stroke="#FACC15" stroke-width="4" stroke-linecap="round"/>' +
-    '</svg>';
-
-  d.svg(vrati, 'ch-vrati td-drag');
-  d.svg(kosi, 'ch-kosi td-drag');
+  // the floor, and room at the end of the page so its last rows scroll clear of it (as Diwali does)
+  var band = document.createElement('div');
+  band.className = 'td-item ch-band';
+  d.layer.insertBefore(band, d.layer.firstChild);
+  document.documentElement.classList.add('ch-band-on');
+  d.svg(art('soop', 140), 'ch-soop td-drag');
+  d.svg(art('kosi', 100), 'ch-kosi');
   var greet = document.createElement('div');
   greet.className = 'td-item ch-greet td-drag';
   greet.textContent = '🌅 जय छठी मइया';
   d.layer.appendChild(greet);
 
-  // Golden glints rising slowly like the light off the water.
-  var glints = [], t = 0, i;
-  for (i = 0; i < 28; i++) glints.push({ x: Math.random(), y: Math.random(), r: d.rand(1, 2.4), vy: d.rand(8, 18), ph: d.rand(0, 6.28) });
-  return {
-    scale: 0.6,
-    frame: function (ctx, dt, w, h) {
-      t += dt;
-      for (i = 0; i < glints.length; i++) {
-        var g = glints[i];
-        g.y -= (g.vy * dt) / h;
-        if (g.y < -0.02) { g.y = 1.02; g.x = Math.random(); }
-        ctx.globalAlpha = 0.35 + 0.35 * Math.sin(t * 2 + g.ph);
-        ctx.fillStyle = i % 3 ? '#FDBA74' : '#FDE047';
-        ctx.beginPath(); ctx.arc(g.x * w + Math.sin(t * .5 + g.ph) * 10, g.y * h, g.r, 0, 6.2832); ctx.fill();
+  // The ghat: the singers on the steps, the man with the daura, and in the river the two vratis facing the
+  // sun from either side with the man pouring milk beside the first. Each has a speech bubble (.ch-say).
+  var ghat = document.createElement('div');
+  ghat.className = 'td-item ch-ghat';
+  ghat.innerHTML = '<div class="ch-p ch-singers">' + art('singers', 200) + '<div class="ch-say"></div></div>' +
+    '<div class="ch-p ch-daura">' + art('daura-man', 76) + '</div>' +
+    '<div class="ch-p ch-wet ch-vrati1">' + art('vrati-1', 84) + '<div class="ch-say"></div></div>' +
+    '<div class="ch-p ch-wet ch-lota">' + art('lota-man', 80) + '</div>' +
+    '<div class="ch-p ch-wet ch-vrati2">' + art('vrati-2', 72) + '<div class="ch-say"></div></div>';
+  d.layer.appendChild(ghat);
+  var dauraEl = ghat.querySelector('.ch-daura'), lotaEl = ghat.querySelector('.ch-lota');
+  // the river starts this far along the ghat, the sun sits this far along it
+  var RIVER = 0.36, SUN_X = 0.67;
+
+  // The wish from the E-Marketing family after the morning arghya.
+  var wish = document.createElement('div');
+  wish.className = 'td-item ch-wish';
+  wish.innerHTML = '<b>E-Marketing परिवार की ओर से</b><span>छठ पूजा की हार्दिक शुभकामनाएँ</span>';
+  d.layer.appendChild(wish);
+
+  // STORY: the second each part of the day starts (an 80-second loop). SKY: the sky over the ghat through the
+  // day, [second, top colour, colour at the water], rgba, eased between.
+  var STORY = { walk: 1, stop: 9, sink: 6, set: 24, night: 26, dawn: 40, risen: 56, wish: 58, again: 80 };
+  var SKY = [[0, [255, 237, 213, 0], [254, 215, 170, 0.22]], [6, [255, 237, 213, 0], [254, 215, 170, 0.22]],
+             [16, [251, 146, 60, 0.32], [244, 114, 182, 0.48]], [24, [109, 40, 217, 0.3], [49, 46, 129, 0.58]],
+             [28, [30, 27, 75, 0.5], [15, 23, 42, 0.72]], [40, [30, 27, 75, 0.5], [15, 23, 42, 0.72]],
+             [48, [244, 114, 182, 0.34], [251, 146, 60, 0.46]], [56, [255, 237, 213, 0], [254, 215, 170, 0.22]], [80, [255, 237, 213, 0], [254, 215, 170, 0.22]]];
+  // what the singers sing (Chhath geet) and the vratis say, by turns: [second, who, words]
+  var SAYS = [[2, 'singers', 'काँच ही बाँस के बहंगिया 🎶'], [9, 'singers', 'बहंगी लचकत जाय 🎶'], [17, 'vrati1', 'जय छठी मइया'],
+              [21, 'vrati2', 'हे दीनानाथ, अरघ स्वीकार करीं'], [29, 'singers', 'केरवा जे फरेला घवद से 🎶'], [35, 'singers', 'ओह पर सुगा मेड़राय 🎶'],
+              [43, 'singers', 'उगी हे सूरज देव 🎶'], [49, 'vrati1', 'भइल अरघ के बेर'], [53, 'vrati2', 'जय छठी मइया']];
+
+  var still = window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  // with reduced motion the story stands still at the evening arghya
+  var storyT = still ? 18 : 0, sayI = 0, sayEl = null, sayHide = 0, rang = {}, splash = [], stars = [], lamps = [], glints = [];
+  for (var si = 0; si < 40; si++) stars.push({ x: Math.random(), y: Math.random(), r: d.rand(.6, 1.6), ph: d.rand(0, 6.28) });
+  for (var li = 0; li < 9; li++) lamps.push({ x: Math.random(), y: Math.random(), sp: d.rand(.006, .014), ph: d.rand(0, 6.28) });
+  for (var gi = 0; gi < 24; gi++) glints.push({ x: Math.random(), y: Math.random(), r: d.rand(1, 2.2), vy: d.rand(8, 16), ph: d.rand(0, 6.28) });
+  function box(el) { var r = el.getBoundingClientRect(), b = d.layer.getBoundingClientRect(); return { x: r.left - b.left, y: r.top - b.top, w: r.width, h: r.height }; }
+  function ease(k) { k = Math.max(0, Math.min(1, k)); return k < .5 ? 2 * k * k : 1 - Math.pow(-2 * k + 2, 2) / 2; }
+  function mix(a, b, k) { return a.map(function (v, i) { return v + (b[i] - v) * k; }); }
+  function rgba(c, a) { return 'rgba(' + Math.round(c[0]) + ',' + Math.round(c[1]) + ',' + Math.round(c[2]) + ',' + (a == null ? c[3] : a).toFixed(3) + ')'; }
+  function skyAt(t) {
+    for (var i = 1; i < SKY.length; i++) if (t <= SKY[i][0]) { var k = ease((t - SKY[i - 1][0]) / (SKY[i][0] - SKY[i - 1][0])); return [mix(SKY[i - 1][1], SKY[i][1], k), mix(SKY[i - 1][2], SKY[i][2], k)]; }
+    return [SKY[0][1], SKY[0][2]];
+  }
+  // how high the sun stands: 1 high in the afternoon, 0 on the water, below 0 under it
+  function sunAt(t) {
+    var S = STORY;
+    if (t < S.sink) return 1;
+    if (t < S.set) return 1 - 1.4 * ease((t - S.sink) / (S.set - S.sink));
+    if (t < S.dawn) return -0.4;
+    if (t < S.risen) return -0.4 + 1.4 * ease((t - S.dawn) / (S.risen - S.dawn));
+    return 1;
+  }
+  function say(who, words) {
+    if (sayEl) sayEl.classList.remove('ch-saying');
+    sayEl = ghat.querySelector('.ch-' + who + ' .ch-say');
+    sayEl.textContent = words; sayEl.classList.add('ch-saying');
+    sayHide = storyT + 3.4;
+  }
+
+  function story(ctx, dt, w, h) {
+    if (!still) storyT += dt;
+    var t = storyT, S = STORY, g = box(ghat), i, p;
+    var rx = g.x + g.w * RIVER, top = h - 62, night = t >= S.night - 2 && t < S.dawn + 4;
+    // the light on the people: full by day, warm at the arghyas, dim at night (css: --ch-light)
+    var light = t < S.sink ? 1 : t < S.set ? 1 - .25 * ease((t - S.sink) / (S.set - S.sink)) : t < S.night ? .75 - .2 * ease((t - S.set) / (S.night - S.set)) :
+                t < S.dawn ? .55 : t < S.risen ? .55 + .45 * ease((t - S.dawn) / (S.risen - S.dawn)) : 1;
+    ghat.style.setProperty('--ch-light', light.toFixed(3));
+    ghat.classList.toggle('ch-night', night);
+    ghat.classList.toggle('ch-arghya', (t >= 14 && t < S.set) || (t >= 46 && t < S.risen));
+    d.layer.classList.toggle('ch-night', night);
+    // the sky over the floor (from the sidebar's edge, no higher than the floor), fading up into the page
+    var sky = skyAt(t), sy = h - 200, bx = box(band).x;
+    var grd = ctx.createLinearGradient(0, sy, 0, top);
+    grd.addColorStop(0, rgba(sky[0], 0)); grd.addColorStop(.35, rgba(sky[0])); grd.addColorStop(1, rgba(sky[1]));
+    ctx.globalAlpha = 1; ctx.fillStyle = grd; ctx.fillRect(bx, sy, w - bx, h - sy);
+    // the stars, at night
+    var starA = t < S.night - 2 ? 0 : t < S.night + 2 ? (t - S.night + 2) / 4 : t < S.dawn ? 1 : t < S.dawn + 6 ? 1 - (t - S.dawn) / 6 : 0;
+    if (starA > 0) {
+      ctx.fillStyle = '#FFF7E0';
+      for (i = 0; i < stars.length; i++) {
+        p = stars[i]; ctx.globalAlpha = starA * (.45 + .45 * Math.sin(t * 2.2 + p.ph));
+        ctx.beginPath(); ctx.arc(g.x + p.x * (w - g.x), sy + 30 + p.y * (top - sy - 50), p.r, 0, 6.2832); ctx.fill();
       }
-      ctx.globalAlpha = 1;
     }
+    // the sun, clipped at the water so it sinks into the river and rises out of it
+    var e = sunAt(t), sx = g.x + g.w * SUN_X, sunY = top - 18 - e * 120, warm = Math.max(0, Math.min(1, 1 - e));
+    if (e > -0.35) {
+      ctx.save(); ctx.beginPath(); ctx.rect(0, 0, w, top); ctx.clip();
+      var halo = ctx.createRadialGradient(sx, sunY, 0, sx, sunY, 90);
+      halo.addColorStop(0, 'rgba(255,214,140,.75)'); halo.addColorStop(.4, 'rgba(251,146,60,' + (.25 + .3 * warm).toFixed(2) + ')'); halo.addColorStop(1, 'rgba(251,146,60,0)');
+      ctx.globalAlpha = 1; ctx.fillStyle = halo; ctx.beginPath(); ctx.arc(sx, sunY, 90, 0, 6.2832); ctx.fill();
+      ctx.fillStyle = rgba(mix([253, 224, 71], [234, 88, 12], warm), 1); ctx.beginPath(); ctx.arc(sx, sunY, 24, 0, 6.2832); ctx.fill();
+      ctx.fillStyle = 'rgba(255,247,237,' + (.5 - .3 * warm).toFixed(2) + ')'; ctx.beginPath(); ctx.arc(sx - 6, sunY - 6, 10, 0, 6.2832); ctx.fill();
+      ctx.restore();
+    }
+    // the river: blue, darker at night, with ripples; the sun's road of light on it when low
+    // its near bank slopes down from the ghat (a strip of wet sand along it)
+    var wg = ctx.createLinearGradient(0, top, 0, h);
+    wg.addColorStop(0, night ? '#1E3A5F' : '#7DD3FC'); wg.addColorStop(1, night ? '#0B2545' : '#0369A1');
+    ctx.globalAlpha = .55; ctx.strokeStyle = '#D6B98C'; ctx.lineWidth = 8;
+    ctx.beginPath(); ctx.moveTo(rx + 46, top); ctx.bezierCurveTo(rx + 14, top + 12, rx - 6, h - 26, rx - 40, h); ctx.stroke();
+    ctx.globalAlpha = .92; ctx.fillStyle = wg;
+    ctx.beginPath(); ctx.moveTo(rx + 46, top); ctx.lineTo(w, top); ctx.lineTo(w, h); ctx.lineTo(rx - 40, h);
+    ctx.bezierCurveTo(rx - 6, h - 26, rx + 14, top + 12, rx + 46, top); ctx.closePath(); ctx.fill();
+    rx += 40; // ripples and lamps keep to the open water
+    ctx.globalAlpha = .55; ctx.strokeStyle = '#E0F2FE'; ctx.lineWidth = 1.2;
+    for (i = 0; i < 7; i++) {
+      var ry = top + 8 + i * 8, off = (t * (14 + i * 3) + i * 70) % 160;
+      ctx.beginPath();
+      for (var xx = rx - 160 + off; xx < w; xx += 160) { ctx.moveTo(xx, ry); ctx.quadraticCurveTo(xx + 10, ry - 3, xx + 20, ry); }
+      ctx.stroke();
+    }
+    if (e > -0.35 && e < 0.9) {
+      ctx.globalCompositeOperation = 'lighter';
+      for (i = 0; i < 6; i++) {
+        var ww = (40 - i * 5) * (1 - Math.max(0, e)) + 6;
+        ctx.globalAlpha = (.55 - i * .07) * (0.6 + 0.4 * Math.sin(t * 3 + i));
+        ctx.fillStyle = '#FDBA74'; ctx.fillRect(sx - ww / 2 + Math.sin(t * 2 + i) * 3, top + 4 + i * 9, ww, 3);
+      }
+      ctx.globalCompositeOperation = 'source-over';
+    }
+    // lamps floating on the river from dusk to morning
+    var lampA = t < S.set - 4 ? 0 : t < S.set ? (t - S.set + 4) / 4 : t < S.risen ? 1 : t < S.risen + 4 ? 1 - (t - S.risen) / 4 : 0;
+    if (lampA > 0) {
+      for (i = 0; i < lamps.length; i++) {
+        p = lamps[i]; if (!still) p.x = (p.x + p.sp * dt) % 1;
+        var lx = rx + 10 + p.x * (w - rx - 20), ly = top + 14 + p.y * 34 + Math.sin(t * 1.6 + p.ph) * 1.5;
+        ctx.globalAlpha = lampA * .4; ctx.fillStyle = '#FDE047'; ctx.beginPath(); ctx.arc(lx, ly - 5, 8, 0, 6.2832); ctx.fill();
+        ctx.globalAlpha = lampA; ctx.fillStyle = '#B45309'; ctx.beginPath(); ctx.moveTo(lx - 6, ly); ctx.quadraticCurveTo(lx, ly + 5, lx + 6, ly); ctx.closePath(); ctx.fill();
+        ctx.fillStyle = '#F97316'; ctx.beginPath(); ctx.moveTo(lx, ly - 8); ctx.quadraticCurveTo(lx + 3, ly - 3, lx, ly - 1); ctx.quadraticCurveTo(lx - 3, ly - 3, lx, ly - 8); ctx.fill();
+      }
+    }
+    // the milk from the lota splashing on the water at the arghyas
+    if (ghat.classList.contains('ch-arghya') && !still) {
+      var lb = box(lotaEl), fx = lb.x + lb.w * 0.86;
+      for (i = 0; i < 2; i++) splash.push({ x: fx + d.rand(-3, 3), y: top + 10, vx: d.rand(-30, 30), vy: d.rand(-70, -30), life: d.rand(.3, .6) });
+    }
+    ctx.fillStyle = '#FFFFFF';
+    for (i = splash.length - 1; i >= 0; i--) {
+      p = splash[i]; p.life -= dt; p.vy += 220 * dt; p.x += p.vx * dt; p.y += p.vy * dt;
+      if (p.life <= 0) { splash.splice(i, 1); continue; }
+      ctx.globalAlpha = Math.min(1, p.life * 2); ctx.fillRect(p.x - 1, p.y - 1, 2.2, 2.2);
+    }
+    // golden glints rising over the ghat by day
+    if (!night) {
+      for (i = 0; i < glints.length; i++) {
+        p = glints[i]; if (!still) { p.y -= (p.vy * dt) / 200; if (p.y < 0) { p.y = 1; p.x = Math.random(); } }
+        ctx.globalAlpha = .3 + .3 * Math.sin(t * 2 + p.ph); ctx.fillStyle = i % 3 ? '#FDBA74' : '#FDE047';
+        ctx.beginPath(); ctx.arc(g.x + p.x * g.w, h - 30 - p.y * 200, p.r, 0, 6.2832); ctx.fill();
+      }
+    }
+    ctx.globalAlpha = 1;
+    // the man with the daura walks to the water's edge, and steps back to the start for the next day
+    var wk = t < S.walk ? 0 : t < S.stop ? (t - S.walk) / (S.stop - S.walk) : 1;
+    dauraEl.style.left = (18 + 14 * wk).toFixed(2) + '%';
+    dauraEl.classList.toggle('ch-walking', !still && t >= S.walk && t < S.stop);
+    dauraEl.style.opacity = t > S.again - 2 ? Math.max(0, (S.again - t) / 2).toFixed(2) : t < 1 ? t.toFixed(2) : '';
+    // bells at the two arghyas, a shankh as the sun comes up
+    if (t >= 16 && !rang.eve) { rang.eve = 1; if (ThemeDecor.sound) ThemeDecor.sound('bell', .3); }
+    if (t >= 46 && !rang.dawn) { rang.dawn = 1; if (ThemeDecor.sound) ThemeDecor.sound('conch', .3); }
+    // the songs and the vratis' words, by turns
+    if (sayEl && t >= sayHide) { sayEl.classList.remove('ch-saying'); sayEl = null; }
+    if (!still && sayI < SAYS.length && t >= SAYS[sayI][0]) { say(SAYS[sayI][1], SAYS[sayI][2]); sayI++; }
+    // the wish, once the sun is up again
+    if (t >= S.wish && !rang.wish) { rang.wish = 1; wish.classList.remove('ch-wish-on'); void wish.offsetWidth; wish.classList.add('ch-wish-on'); }
+    if (t >= S.again) { storyT = 0; sayI = 0; rang = {}; }
+  }
+
+  return {
+    scale: 0.75,
+    stop: function () { document.documentElement.classList.remove('ch-band-on'); d.layer.classList.remove('ch-night'); },
+    frame: function (ctx, dt, w, h) { story(ctx, dt, w, h); return true; }
   };
 });

@@ -1,3 +1,6 @@
+@import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700;800&display=swap');
+/* the everyday amber look, scoped to Chhath (generated: scripts/build-theme-amber.js); this file's rules override it */
+@import url('/css/themes/chhath-amber.css');
 /* Chhath Puja — the setting sun's orange and rose over the river's blue at the ghat. */
 :root[data-theme="chhath"] {
   --brand-1:#FDBA74; --brand-2:#EA580C; --brand-2-rgb:234,88,12;
@@ -6,29 +9,63 @@
   --page-bg:#FFF7F0; --sidebar-top:#7C2D12; --sidebar-bottom:#0C4A6E;
 }
 
-/* Decoration (js/themes/chhath.js): the vrati in the river before the sun bottom-right, the kosi
-   of sugarcane bottom-left, the greeting above it. */
-.ch-vrati { right:96px; bottom:0; width:220px; transition:translate .3s var(--ease); filter:drop-shadow(0 4px 6px rgba(0,0,0,.18)); }
-.ch-vrati svg { overflow:visible; }
-.ch-sun { transform-box:fill-box; transform-origin:center; animation:ch-sun 4s ease-in-out infinite alternate; }
-@keyframes ch-sun { from { opacity:.75; transform:scale(.95); } to { opacity:1; transform:scale(1.05); } }
-.ch-shimmer { animation:ch-shimmer 1.4s ease-in-out infinite alternate; }
-@keyframes ch-shimmer { from { opacity:.5; transform:translateX(-3px); } to { opacity:1; transform:translateX(3px); } }
-.ch-offer { transform-box:fill-box; transform-origin:50% 100%; animation:ch-offer 3s ease-in-out infinite alternate; }
-@keyframes ch-offer { from { transform:translateY(0); } to { transform:translateY(-4px); } }
-.ch-float { animation:ch-float 2.4s ease-in-out infinite alternate; }
-@keyframes ch-float { from { transform:translateY(0); } to { transform:translateY(-3px); } }
-.ch-flame { transform-box:fill-box; transform-origin:50% 100%; animation:ch-flicker .9s ease-in-out infinite alternate; }
-@keyframes ch-flicker { from { transform:scale(1,.9) skewX(-3deg); } to { transform:scale(1.08,1.12) skewX(3deg); } }
-.ch-kosi { left:76px; bottom:0; width:130px; transition:translate .3s var(--ease); filter:drop-shadow(0 4px 5px rgba(0,0,0,.2)); }
-.ch-kosi svg { overflow:visible; }
+/* Decoration (js/themes/chhath.js): a day at the ghat along the foot of the page. The floor (.ch-band) with
+   room at the end of the page; the soop of prasad and the kosi on the left, the greeting above them; the
+   ghat (.ch-ghat) with the singers on the steps, the man with the daura, and the vratis and the man with
+   the lota standing in the river (.ch-wet: their legs fade into the water drawn on the canvas). --ch-light
+   on .ch-ghat dims them for the night; .ch-arghya lifts the soops at the two arghyas. */
+.ch-band { position:absolute; left:60px; right:0; bottom:0; height:200px; pointer-events:none;
+  background:linear-gradient(180deg, rgba(255,247,240,0) 0, rgba(255,241,230,.94) 34%, #FFE8D2 100%); }
+:root.ch-band-on .main { padding-bottom:210px; }
+.sidebar:hover ~ #themeDecor .ch-band { left:232px; }
+.ch-soop { left:70px; bottom:6px; width:140px; filter:drop-shadow(0 4px 6px rgba(0,0,0,.22)); transition:translate .3s var(--ease); }
+.ch-kosi { left:200px; bottom:2px; width:100px; filter:drop-shadow(0 4px 5px rgba(0,0,0,.2)); transition:translate .3s var(--ease), filter .8s; }
+.ch-soop img, .ch-kosi img { display:block; width:100%; height:auto; }
+#themeDecor.ch-night .ch-kosi { filter:drop-shadow(0 0 14px rgba(255,190,60,.9)) drop-shadow(0 4px 5px rgba(0,0,0,.2)); }
+.sidebar:hover ~ #themeDecor .ch-soop, .sidebar:hover ~ #themeDecor .ch-kosi { translate:172px 0; }
+.ch-ghat { position:absolute; left:300px; right:120px; bottom:0; height:210px; pointer-events:none; --ch-light:1; }
+.ch-p { position:absolute; bottom:0; filter:brightness(var(--ch-light)) drop-shadow(0 4px 5px rgba(0,0,0,.22)); transition:filter .6s; }
+.ch-p img { display:block; width:100%; height:auto; }
+.ch-singers { left:0; width:20%; max-width:200px; bottom:4px; }
+.ch-singers img { transform-origin:50% 100%; animation:ch-sing 1.6s ease-in-out infinite alternate; }
+@keyframes ch-sing { from { transform:rotate(-.6deg); } to { transform:rotate(.6deg) translateY(-1px); } }
+.ch-daura { left:18%; width:7.5%; max-width:76px; bottom:6px; }
+.ch-walking img { transform-origin:50% 100%; animation:ch-step .45s ease-in-out infinite alternate; }
+@keyframes ch-step { from { transform:translateY(0) rotate(-1.5deg); } to { transform:translateY(-3px) rotate(1.5deg); } }
+/* standing in the river: knee-deep, the lower part fading into the water */
+.ch-wet { bottom:16px; }
+.ch-wet img { -webkit-mask-image:linear-gradient(to top, transparent 0, rgba(0,0,0,.35) 14%, #000 30%); mask-image:linear-gradient(to top, transparent 0, rgba(0,0,0,.35) 14%, #000 30%); }
+.ch-vrati1 { left:41%; width:8.2%; max-width:84px; }
+.ch-lota { left:50%; width:7.8%; max-width:80px; }
+.ch-vrati2 { left:80%; width:7%; max-width:72px; }
+.ch-vrati1 img, .ch-vrati2 img, .ch-lota img { transform-origin:50% 100%; transition:transform 1.2s ease; }
+.ch-arghya .ch-vrati1 img, .ch-arghya .ch-vrati2 img { transform:translateY(-4px); animation:ch-offer 2.4s ease-in-out infinite alternate; }
+@keyframes ch-offer { from { translate:0 0; } to { translate:0 -3px; } }
+/* the songs and words over their heads (diwali.js's speech bubble, in sunset colours) */
+.ch-say { position:absolute; left:50%; bottom:calc(100% + 2px); z-index:3; white-space:nowrap; pointer-events:none; opacity:0; transform:translateX(-50%) scale(.4);
+  font:800 13px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif; color:#9A3412; padding:6px 11px; border-radius:12px; background:#FFF7ED;
+  box-shadow:0 0 0 1.5px #FB923C, 0 6px 14px -6px rgba(0,0,0,.35); transition:opacity .25s, transform .3s cubic-bezier(.34,1.56,.64,1); }
+.ch-say::after { content:''; position:absolute; left:50%; top:100%; margin-left:-5px; border:5px solid transparent; border-top-color:#FFF7ED; }
+.ch-say.ch-saying { opacity:1; transform:translateX(-50%) scale(1); }
+.ch-vrati2 .ch-say { left:20%; }
+/* the wish from the E-Marketing family after the morning arghya */
+.ch-wish { position:absolute; left:50%; bottom:222px; z-index:3; pointer-events:none; text-align:center; white-space:nowrap; opacity:0;
+  transform:translateX(-50%) scale(.5); padding:12px 28px 13px; border-radius:20px; color:#fff;
+  background:linear-gradient(135deg,#EA580C,#DB2777 50%,#0369A1);
+  box-shadow:0 0 0 3px rgba(254,215,170,.95), 0 0 40px rgba(234,88,12,.55), 0 16px 34px -12px rgba(0,0,0,.45); }
+.ch-wish b { display:block; font:700 15px/1.3 'Nirmala UI','Mangal','Noto Sans Devanagari','Inter',sans-serif; color:#FFEDD5; }
+.ch-wish span { display:block; font:800 24px/1.3 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif; text-shadow:0 2px 8px rgba(0,0,0,.35); }
+.ch-wish.ch-wish-on { animation:ch-wish 8s ease-out forwards; }
+@keyframes ch-wish { 0% { opacity:0; transform:translateX(-50%) scale(.5); } 8% { opacity:1; transform:translateX(-50%) scale(1.08); } 13% { transform:translateX(-50%) scale(1); }
+  85% { opacity:1; transform:translateX(-50%) scale(1); } 100% { opacity:0; transform:translateX(-50%) translateY(-10px) scale(.96); } }
+@media (prefers-reduced-motion: reduce) { .ch-singers img, .ch-walking img, .ch-arghya .ch-vrati1 img, .ch-arghya .ch-vrati2 img { animation:none; } .ch-p, .ch-soop, .ch-kosi { transition:none; } }
 .ch-greet { position:absolute; left:84px; bottom:182px; white-space:nowrap; font:700 15px/1 'Nirmala UI','Mangal','Noto Sans Devanagari',sans-serif;
   color:#fff; padding:7px 14px; border-radius:999px; background:linear-gradient(135deg,#EA580C,#DB2777 55%,#0369A1);
   box-shadow:0 0 0 2px rgba(255,255,255,.85), 0 0 18px rgba(234,88,12,.5); transition:translate .3s var(--ease);
   animation:ch-greet 2.6s ease-in-out infinite alternate; }
 @keyframes ch-greet { from { transform:translateY(0); } to { transform:translateY(-4px); } }
 .sidebar:hover ~ #themeDecor .ch-kosi, .sidebar:hover ~ #themeDecor .ch-greet { translate:172px 0; }
-@media (prefers-reduced-motion: reduce) { .ch-sun, .ch-shimmer, .ch-offer, .ch-float, .ch-flame, .ch-greet { animation:none; } .ch-kosi, .ch-greet, .ch-vrati { transition:none; } }
+@media (prefers-reduced-motion: reduce) { .ch-greet { animation:none; transition:none; } }
 
 /* Chhath Puja skin: sunset over the ghat across the whole UI. Only under data-theme="chhath". */
 /* a sunset sky at the top of the page, faint ripples below */
@@ -74,3 +111,52 @@
 :root[data-theme="chhath"] .nav-item.active::before { background:linear-gradient(180deg,#FDE047,#F97316,#0EA5E9); }
 :root[data-theme="chhath"] ::-webkit-scrollbar-thumb { background:linear-gradient(180deg,#FDBA74,#EA580C,#0369A1); background-clip:content-box; }
 @media (prefers-reduced-motion: reduce) { :root[data-theme="chhath"] .sidebar::before { animation:none; } }
+
+/* On the amber look (chhath-amber.css), as Diwali does: the sidebar keeps its dusk, sunset orange into river
+   blue (the amber sidebar is cream glass with !important, scoped :not(.amb-dark), so .sidebar.sidebar here to
+   outrank it), with light text to go with it; the active item is a sunset pill. */
+:root[data-theme="chhath"] .sidebar.sidebar {
+  background:
+    radial-gradient(160px 120px at 50% -20px, rgba(253,186,116,.55), transparent 70%),
+    linear-gradient(180deg,var(--sidebar-top) 0%,#9A3412 22%,var(--sidebar-bottom) 100%) !important;
+  -webkit-backdrop-filter:none; backdrop-filter:none; border-right:0; box-shadow:6px 0 30px -12px rgba(12,74,110,.45);
+}
+:root[data-theme="chhath"] .logo-text, :root[data-theme="chhath"] .su-name { color:#FFF7ED; }
+:root[data-theme="chhath"] .su-role, :root[data-theme="chhath"] .nav-group-header, :root[data-theme="chhath"] .nav-group-label-text { color:#FDBA74; }
+:root[data-theme="chhath"] .nav-group-header:hover { color:#FED7AA; }
+:root[data-theme="chhath"] .sidebar-logo, :root[data-theme="chhath"] .sidebar-user { border-color:rgba(253,186,116,.2); }
+:root[data-theme="chhath"] .nav-divider { border-top-color:rgba(253,186,116,.2); }
+:root[data-theme="chhath"] .sidebar-user:hover { background:rgba(253,186,116,.12); }
+:root[data-theme="chhath"] .nav-item { color:#FFEDD5; }
+:root[data-theme="chhath"] .nav-item:hover { background:rgba(253,186,116,.14); color:#FFF7ED; }
+:root[data-theme="chhath"] .nav-item.active { background:linear-gradient(90deg,#F97316,#FDBA74); color:#431407; font-weight:700;
+  box-shadow:0 4px 14px -4px rgba(249,115,22,.75), inset 0 0 0 1px rgba(255,237,213,.6); }
+:root[data-theme="chhath"] .nav-item.active svg { filter:none; color:#431407; }
+:root[data-theme="chhath"] .nav-item.active::before { display:none; }
+/* cards: a thin sunset edge all round, softer corners, a warm shadow (over the sunset stripe above) */
+:root[data-theme="chhath"] .ov-card, :root[data-theme="chhath"] .chart-card, :root[data-theme="chhath"] .task-table-card {
+  border:1.5px solid #FED7AA; border-radius:18px;
+  box-shadow:0 10px 26px -14px rgba(234,88,12,.5), 0 2px 6px -2px rgba(12,74,110,.12);
+}
+/* headings in a deep sunset brown, bold serif, each with its icon tile (hidden under festival themes by
+   default; shown again here, as Diwali does) in Chhath colours; the emoji stand-ins are hidden */
+:root[data-theme="chhath"] .topbar-title {
+  background:none; -webkit-background-clip:border-box; background-clip:border-box; color:#9A3412;
+  font-family:'Playfair Display',Georgia,'Times New Roman',serif; font-weight:800; font-size:24px; letter-spacing:.2px;
+}
+:root[data-theme="chhath"] .card-head-title, :root[data-theme="chhath"] .chart-card h3, :root[data-theme="chhath"] .dash-perf-head h3 {
+  display:flex; align-items:center; color:#9A3412; font-family:'Playfair Display',Georgia,serif; font-weight:700; font-size:18px;
+}
+:root[data-theme="chhath"] .dash-perf-grid h4 { color:#9A3412; font-family:'Playfair Display',Georgia,serif; font-weight:700; font-size:15px; }
+:root[data-theme="chhath"] .card-head-title .amb-hide, :root[data-theme="chhath"] .chart-card h3 .amb-hide, :root[data-theme="chhath"] .dash-perf-head h3 .amb-hide, :root[data-theme="chhath"] .dash-perf-grid h4 .amb-hide { display:none; }
+:root[data-theme="chhath"] .amb-ico {
+  display:inline-grid; place-items:center; flex-shrink:0; width:34px; height:34px; border-radius:10px; margin-right:10px; color:#fff;
+  box-shadow:0 6px 12px -6px rgba(154,52,18,.45), inset 0 1px 0 rgba(255,255,255,.45);
+}
+:root[data-theme="chhath"] .amb-ico svg { width:18px; height:18px; }
+:root[data-theme="chhath"] .amb-ico-red { background:linear-gradient(145deg,#FB923C,#C2410C); }
+:root[data-theme="chhath"] .amb-ico-amber { background:linear-gradient(145deg,#FDE047,#EA580C); }
+:root[data-theme="chhath"] .amb-only.amb-h4-ico { display:inline-grid; place-items:center; width:24px; height:24px; border-radius:7px; margin-right:6px; vertical-align:middle; color:#fff; }
+:root[data-theme="chhath"] .amb-h4-ico svg { width:14px; height:14px; }
+:root[data-theme="chhath"] .amb-h4-amber { background:linear-gradient(145deg,#FDE047,#EA580C); }
+:root[data-theme="chhath"] .amb-h4-red { background:linear-gradient(145deg,#FB923C,#C2410C); }
