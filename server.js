@@ -9185,7 +9185,8 @@ app.get('/api/daily-tasks/mine', requireAuth, async (req, res) => {
     const hasClientId = await ensureDailyClientIdColumn();
     const [rows] = await db.query(
       `SELECT id, DATE_FORMAT(entry_date,'%Y-%m-%d') AS entry_date,
-              client_name, ${hasClientId ? 'client_id,' : ''} department, description, duration_min, created_at
+              client_name, ${hasClientId ? 'client_id,' : ''} department, description, duration_min, created_at,
+              DATE_FORMAT(created_at,'%h:%i %p') AS filed_at
        FROM daily_tasks WHERE user_id=?
        ORDER BY entry_date DESC, id DESC LIMIT 200`,
       [req.session.userId]

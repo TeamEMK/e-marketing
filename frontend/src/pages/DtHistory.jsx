@@ -28,12 +28,16 @@ function Daily({ rows }) {
   return Object.keys(byDate).map(date => {
     const items = byDate[date];
     const total = items.reduce((a, b) => a + (b.duration_min || 0), 0);
+    // The rows come newest id first, so the last one is the earliest of the
+    // day -- the same moment the lock notice reports as the filing time.
+    const filedAt = items[items.length - 1].filed_at;
     return (
       <div key={date} className="dt-history-day">
         <div className="dt-history-date">
           <span>{`📅 ${day(date)}`}</span>
           <span className="dt-history-meta">{`${items.length} task${items.length > 1 ? 's' : ''}`}</span>
           <span className="dt-history-meta">{`${total} min total`}</span>
+          {filedAt ? <span className="dt-history-meta">{`filled at ${filedAt}`}</span> : null}
         </div>
         {items.map((it, i) => <Entry key={i} client={it.client_name} department={it.department} description={it.description} minutes={it.duration_min} />)}
       </div>

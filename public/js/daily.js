@@ -939,11 +939,15 @@ async function dtLoadHistory(){
     for (const date of Object.keys(byDate)) {
       const items = byDate[date];
       const total = items.reduce((a,b) => a + (b.duration_min||0), 0);
+      // Newest id first, so the last row is the earliest of the day -- the same
+      // moment the lock notice reports as the filing time.
+      const filedAt = items[items.length - 1].filed_at;
       html += `<div class="dt-history-day">
         <div class="dt-history-date">
           <span>📅 ${dtEscape(fmtDate(date) || date)}</span>
           <span class="dt-history-meta">${items.length} task${items.length>1?'s':''}</span>
           <span class="dt-history-meta">${total} min total</span>
+          ${filedAt ? `<span class="dt-history-meta">filled at ${dtEscape(filedAt)}</span>` : ''}
         </div>`;
       for (const it of items) {
         html += `<div class="dt-history-row">
