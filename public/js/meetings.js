@@ -167,8 +167,10 @@ function mtgInviteText(m) {
   const time = `${month} ${d}, ${y} ${String(h % 12 || 12).padStart(2, '0')}:${String(mi).padStart(2, '0')} ${h < 12 ? 'AM' : 'PM'} India`;
   let host = 'zoom.us';
   try { host = new URL(m.meet_link).host; } catch (e) {}
+  const agenda = (m.agenda || '').trim();
   return `${m.organizer_name || 'E-Marketing'} is inviting you to a scheduled Zoom meeting.\n\n`
     + `Topic: ${m.title}\nTime: ${time}\n\n`
+    + (agenda ? `Agenda:\n${agenda}\n\n` : '')
     + `Join Zoom Meeting\n${m.meet_link}\n\n`
     + `Meeting chat link\nhttps://${host}/launch/jc/${id}\n\n`
     + `Meeting ID: ${idFmt}\nPasscode: ${m.zoom_passcode || ''}`;
