@@ -172,7 +172,10 @@ export default function DtForm() {
               <tr key={r.key} className="dt-row">
                 <td><SearchSelect className="dt-client" value={r.client} onChange={v => setRow(r.key, { client: v })} options={clientOpts(r.client)} placeholder="--select--" /></td>
                 <td><SearchSelect className="dt-dept" value={r.dept} onChange={v => setRow(r.key, { dept: v })} options={deptOpts} placeholder="--select--" /></td>
-                <td><textarea className="dt-desc" placeholder="What did you do?" value={r.desc} onChange={e => setRow(r.key, { desc: e.target.value })} /></td>
+                {/* spellCheck and lang are spelled out so the browser underlines
+                    typos here and offers corrections on right-click, whatever
+                    the page or the browser would otherwise default to. */}
+                <td><textarea className="dt-desc" placeholder="What did you do?" spellCheck="true" lang="en" value={r.desc} onChange={e => setRow(r.key, { desc: e.target.value })} /></td>
                 <td><input type="number" min="1" className="dt-time" placeholder="0" value={r.time} onChange={e => setRow(r.key, { time: e.target.value })} /></td>
                 <td><button className="dt-row-btn dt-btn-dup" onClick={() => dup(r)}>Dup</button></td>
                 <td><button className="dt-row-btn dt-btn-del" onClick={() => del(r.key)}>Del</button></td>

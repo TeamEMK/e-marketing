@@ -665,7 +665,7 @@ function dtAddRow(prefill){
   tr.innerHTML = `
     <td><select class="dt-client">${dtClientOptions(prefill?.client)}</select></td>
     <td><select class="dt-dept">${dtDeptOptions(dept)}</select></td>
-    <td><textarea class="dt-desc" placeholder="What did you do?">${dtEscape(prefill?.desc||'')}</textarea></td>
+    <td><textarea class="dt-desc" placeholder="What did you do?" spellcheck="true" lang="en">${dtEscape(prefill?.desc||'')}</textarea></td>
     <td><input type="number" min="1" class="dt-time" value="${prefill?.time||''}" placeholder="0" oninput="dtRecalcTotal()"/></td>
     <td><button class="dt-row-btn dt-btn-dup" onclick="dtDupRow(this)">Dup</button></td>
     <td><button class="dt-row-btn dt-btn-del" onclick="dtDelRow(this)">Del</button></td>
