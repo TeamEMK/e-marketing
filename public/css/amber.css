@@ -275,6 +275,19 @@
 :root:not([data-theme]) .topbar #dashBtns{gap:8px;flex-wrap:nowrap;}
 :root:not([data-theme]) .topbar #dashBtns .btn{padding:8px 13px;white-space:nowrap;}
 :root:not([data-theme]) #page-dashboard .dash-topbar{margin-bottom:16px;}
+/* The switcher must never be the thing that runs off the edge. The breakpoints
+   below budget the row by width, but a budget only holds for the content it
+   was measured against: a longer name, a wider sidebar or a different zoom all
+   move the total, and the overflow always lands on the last item.
+   min-width:0 is what lets a flex item shrink past its own content, so the
+   switcher narrows and ellipsises instead of being pushed out of view. This is
+   deliberately NOT inside a media query -- it has to hold at every width. */
+:root:not([data-theme]) .topbar{min-width:0;}
+:root:not([data-theme]) #topbarActions{min-width:0;flex-shrink:1;}
+:root:not([data-theme]) #topbarActions .ss-input,
+:root:not([data-theme]) #topbarActions #dashUserSwitcher{
+  min-width:0;flex-shrink:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
 /* Between roughly 1300 and 1560 the row -- title, search, five buttons, bell,
    switcher -- is wider than the window, and because nothing in it may shrink
    the overflow all lands on the last item: the "Dashboard:" switcher runs off
