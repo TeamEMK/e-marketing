@@ -275,6 +275,31 @@
 :root:not([data-theme]) .topbar #dashBtns{gap:8px;flex-wrap:nowrap;}
 :root:not([data-theme]) .topbar #dashBtns .btn{padding:8px 13px;white-space:nowrap;}
 :root:not([data-theme]) #page-dashboard .dash-topbar{margin-bottom:16px;}
+/* Between roughly 1300 and 1560 the row -- title, search, five buttons, bell,
+   switcher -- is wider than the window, and because nothing in it may shrink
+   the overflow all lands on the last item: the "Dashboard:" switcher runs off
+   the right edge and its name is cut in half. Give the row back the width it
+   needs by tightening the three parts that can afford it, rather than letting
+   a control disappear. */
+@media (max-width:1560px){
+  :root:not([data-theme]) .amb-search{width:200px;}
+  :root:not([data-theme]) .topbar #dashBtns{gap:6px;}
+  :root:not([data-theme]) .topbar #dashBtns .btn{padding:8px 10px;}
+  :root:not([data-theme]) #topbarActions .ss-input,
+  :root:not([data-theme]) #topbarActions #dashUserSwitcher{max-width:180px;}
+}
+/* Narrower still (laptops around 1366): the remaining width comes off the
+   title and the search rather than the buttons, so no button is clipped
+   mid-word. The search is only narrowed, never hidden -- Ctrl+K focuses it,
+   and focus() does nothing on a hidden box. */
+@media (max-width:1440px){
+  :root:not([data-theme]) .topbar-title{font-size:20px;}
+  :root:not([data-theme]) .amb-search{width:140px;}
+  :root:not([data-theme]) .topbar #dashBtns{gap:4px;}
+  :root:not([data-theme]) .topbar #dashBtns .btn{padding:8px 8px;}
+  :root:not([data-theme]) #topbarActions .ss-input,
+  :root:not([data-theme]) #topbarActions #dashUserSwitcher{max-width:140px;}
+}
 .amb-search{position:relative;display:flex;align-items:center;gap:8px;height:38px;width:270px;padding:0 10px;
   background:rgba(255,255,255,.75);border:1px solid #EAD7AE;border-radius:11px;box-shadow:var(--shadow-xs);}
 .amb-search:focus-within{border-color:var(--accent);box-shadow:0 0 0 3px rgba(245,158,11,.18);}
