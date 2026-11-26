@@ -450,6 +450,7 @@ function _buildTaskRowHtml(t, ctx) {
     <button class="action-btn" style="background:#eff6ff;color:#1d4ed8;padding:4px 7px;margin-left:3px" onclick="openComments(${t.id},'${editType}')" title="Comments">💬</button>
     ${!isDelegateByMe && !isCompleted && !isWaiting ? `<button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${editType}')">Done</button>` : ''}
     ${!isDelegateByMe && !isChecklist && !isCompleted && !isWaiting ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${editType}')">Revise</button>` : ''}
+    ${!isDelegateByMe && !isChecklist && !isCompleted && !isWaiting && t.status !== 'hold' ? `<button class="action-btn" style="margin-left:3px;background:#f1f5f9;color:#475569" onclick="holdTask(${t.id},'${editType}')" title="The client has stopped this work">⏸ Hold</button>` : ''}
     ${isCompleted && canReopenThis ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${editType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
     ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting</span>` : ''}
   ` : `
@@ -457,6 +458,7 @@ function _buildTaskRowHtml(t, ctx) {
     ${!isDelegateByMe && !isCompleted && !isWaiting ? `
       <button class="action-btn done" style="margin-left:3px" onclick="updateStatus(${t.id},'completed','alltasks','${editType}')">Done</button>
       ${!isChecklist ? `<button class="action-btn revise" style="margin-left:3px" onclick="openReviseModal(${t.id},'${editType}')">Revise</button>` : ''}
+      ${!isChecklist && t.status !== 'hold' ? `<button class="action-btn" style="margin-left:3px;background:#f1f5f9;color:#475569" onclick="holdTask(${t.id},'${editType}')" title="The client has stopped this work">⏸ Hold</button>` : ''}
     ` : ''}
     ${isCompleted && canReopenThis ? `<button class="action-btn reopen" style="margin-left:3px" onclick="reopenTask(${t.id},'alltasks','${editType}')" title="Reopen — mark as not done">↩ Reopen</button>` : ''}
     ${isWaiting ? `<span style="font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px">⏳ Waiting Approval</span>` : ''}
@@ -1246,6 +1248,36 @@ async function taskReviseSend(taskId, taskType, newDate, reason, close) {
   loadDashboard(true);
   loadAllTasks();
   loadApprovalBadge();
+}
+
+// Put a task on hold — the client has called the work off, so it can neither
+// be marked done (it was never done) nor deleted (the record has to stay).
+// The reason is required because the doer's head of department decides the
+// request on it alone; there is no date or other detail to judge it by.
+//
+// The server answers one of two ways: `applied` when the asker IS the approver,
+// `needsApproval` otherwise. Anything else is its refusal, shown as it came —
+// "already on hold", "a completed task cannot be put on hold", or no approver
+// being findable — because each one tells the user something different.
+async function holdTask(taskId, taskType) {
+  const reason = await appPromptText(
+    'Why is this work being stopped? This goes to the head of department who approves it.',
+    { title: 'Put this task on hold?', placeholder: 'e.g. Client has stopped this work',
+      okLabel: 'Request hold' });
+  if (reason === null) return;              // Cancel
+  const text = String(reason).trim();
+  if (!text) { showToast('Please enter a reason for putting this task on hold', 'error'); return; }
+  try {
+    const r = await api(`/api/tasks/${taskId}/status`, 'PUT',
+      { status: 'hold', type: taskType || 'delegation', reason: text });
+    if (r.error) { appAlert(r.error, 'Could not put this on hold'); return; }
+    showToast(r.applied ? '⏸ Task put on hold' : '⏸ Hold request sent for approval');
+    loadDashboard(true);
+    loadAllTasks();
+    loadApprovalBadge();
+  } catch (e) {
+    appAlert('Could not put this on hold: ' + e.message, 'Error');
+  }
 }
 
 // The task pop-ups are moving to React (frontend/src/pages/TaskPopups.jsx, in

@@ -105,6 +105,11 @@ function TaskRow({ t, tasksType, isAdmin, showClientCol }) {
     && <button key="done" className="action-btn done" ref={css('margin-left:3px')} onClick={() => legacy('updateStatus', t.id, 'completed', 'alltasks', editType)}>Done</button>;
   const revise = !isDelegateByMe && !isChecklist && !isCompleted && !isWaiting
     && <button key="rev" className="action-btn revise" ref={css('margin-left:3px')} onClick={() => legacy('openReviseModal', t.id, editType)}>Revise</button>;
+  // The client has called this work off: it cannot be marked done (it never
+  // was) and must not be deleted (the record stays). Same conditions as
+  // Revise, plus: a task already on hold has nothing to ask for.
+  const hold = !isDelegateByMe && !isChecklist && !isCompleted && !isWaiting && t.status !== 'hold'
+    && <button key="hold" className="action-btn" ref={css('margin-left:3px;background:#f1f5f9;color:#475569')} onClick={() => legacy('holdTask', t.id, editType)} title="The client has stopped this work">⏸ Hold</button>;
   const reopen = isCompleted && canReopenThis
     && <button key="reo" className="action-btn reopen" ref={css('margin-left:3px')} onClick={() => legacy('reopenTask', t.id, 'alltasks', editType)} title="Reopen — mark as not done">↩ Reopen</button>;
   const waiting = label => isWaiting && <span key="wait" ref={css('font-size:11px;color:#f59e0b;font-weight:600;margin-left:4px')}>{label}</span>;
@@ -113,9 +118,9 @@ function TaskRow({ t, tasksType, isAdmin, showClientCol }) {
         canEditThis && <button key="edit" className="action-btn edit" ref={css('padding:4px 7px')} onClick={() => legacy('openEditTask', t.id, editType)} title="Edit">✏️</button>,
         canDeleteThis && <button key="del" className="action-btn delete" ref={css('padding:4px 7px;margin-left:3px')} onClick={() => legacy('deleteTask', t.id, editType)} title="Delete">🗑</button>,
         comments(BTN_COMMENTS + ';margin-left:3px', 'com'),
-        done, revise, reopen, waiting('⏳ Waiting'),
+        done, revise, hold, reopen, waiting('⏳ Waiting'),
       ]
-    : [comments(BTN_COMMENTS, 'com'), done, revise, reopen, waiting('⏳ Waiting Approval')];
+    : [comments(BTN_COMMENTS, 'com'), done, revise, hold, reopen, waiting('⏳ Waiting Approval')];
   const sDone = Number(t.subtasks_done || 0), sPending = Number(t.subtasks_pending || 0);
   const rowProps = isClickable
     ? { onClick: () => legacy('openTaskDetail', t), ref: css('cursor:pointer'), title: 'Click to view details' }
