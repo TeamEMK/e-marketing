@@ -5,6 +5,11 @@
 import { useEffect, useState } from 'react';
 import { me, canDo, legacy, css, fmtDate } from '../lib/app.js';
 
+// Keyed rather than a ternary: the old `completed ? ... : 'Revision'` labelled
+// every other kind of request a revision, so a hold request read as one.
+// An unknown action_type now shows its own name instead of a wrong one.
+const ACTION_LABEL = { completed: '✅ Mark Complete', revised: '🔄 Revision', hold: '⏸ Put on Hold' };
+
 export default function TaskApprovals() {
   const [list, setList] = useState(null);
   useEffect(() => {
@@ -37,7 +42,7 @@ export default function TaskApprovals() {
                 <td ref={css('color:#475569')}>{a.clientName || '—'}</td>
                 <td>{a.description || '—'}</td>
                 <td>
-                  <span className={`status-badge ${a.action_type}`}>{a.action_type === 'completed' ? '✅ Mark Complete' : '🔄 Revision'}</span>
+                  <span className={`status-badge ${a.action_type}`}>{ACTION_LABEL[a.action_type] || a.action_type}</span>
                   {a.action_type === 'revised' && a.reviseToDate ? (
                     <div ref={css('font-size:11px;color:#64748b;margin-top:3px')}>{a.currentDue ? fmtDate(a.currentDue) + ' → ' : ''}<b ref={css('color:#9d174d')}>{fmtDate(a.reviseToDate)}</b></div>
                   ) : null}

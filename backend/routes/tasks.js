@@ -38,6 +38,7 @@ module.exports = function registerTaskRoutes(app, deps) {
     canSeeTask,
     ensureTransferredFromCols,
     transferredFromSql,
+    resolveHoldApprover,
   } = deps;
 
 // Why a delegation task was finished after its due date. Required when it is
@@ -588,7 +589,7 @@ app.post('/api/tasks/notify-batch', requireAuth, async (req, res) => {
               DATE_FORMAT(t.due_date,'%d-%m-%Y') AS due,
               COALESCE(NULLIF(TRIM(c.brand_name),''), c.name) AS client_name
          FROM delegation_tasks t LEFT JOIN clients c ON c.id = t.client_id
-        WHERE t.id IN (?) AND t.assigned_by = ? AND t.status <> 'completed'
+        WHERE t.id IN (?) AND t.assigned_by = ? AND t.status NOT IN ('completed','hold')
           AND t.created_at >= NOW() - INTERVAL 1 HOUR
         ORDER BY t.assigned_to, t.due_date, t.id`, [ids, req.session.userId]);
     const byDoer = new Map();
@@ -688,13 +689,20 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     // as neither pending nor completed while the frontend's !t.status test
     // still reads it as pending. Revise is not offered on checklist rows in the
     // UI, so this refuses a route that was reachable but never travelled.
-    const ALLOWED_STATUS = { delegation: ['pending', 'completed', 'revised'], checklist: ['pending', 'completed'] };
+    // 'hold' is delegation-only, like 'revised': checklist_tasks has neither
+    // the ENUM value nor an approval column to hang the request on.
+    const ALLOWED_STATUS = { delegation: ['pending', 'completed', 'revised', 'hold'], checklist: ['pending', 'completed'] };
     if (!ALLOWED_STATUS[tt].includes(status)) {
       return res.status(400).json({ error: `status must be one of: ${ALLOWED_STATUS[tt].join(', ')}` });
     }
     // The assigner approves or rejects a revision on its reason, so one is required.
     if (status === 'revised' && !String(reason || '').trim()) {
       return res.status(400).json({ error: 'Please enter a reason for the revision.' });
+    }
+    // The HOD decides a hold on its reason alone — there is no date or other
+    // detail to judge it by — so it is required for the same reason.
+    if (status === 'hold' && !String(reason || '').trim()) {
+      return res.status(400).json({ error: 'Please enter a reason for putting this task on hold.' });
     }
     const table = getTable(tt);
     const isAdmin = req.session.role === 'admin';
@@ -759,6 +767,54 @@ app.put('/api/tasks/:id/status', requireAuth, async (req, res) => {
     if (status === 'pending' && task.status === 'completed'
         && !(await userCanDo(req.session, 'reopen_task'))) {
       return res.status(403).json({ error: 'You do not have access to reopen tasks' });
+    }
+
+    // HOLD — the client has called this work off. It cannot be completed (it
+    // was never done) and must not be deleted (the record has to stay), so it
+    // is parked and left out of the doer's score entirely.
+    //
+    // Alone among the requests here, this one goes to the DOER's head of
+    // department rather than to whoever assigned the task: it is a call about
+    // the doer's workload and score, and on a client-delegated task the
+    // assigner is the client. resolveHoldApprover returns null when it can
+    // name nobody — a request no one can decide would sit on the task forever
+    // behind waiting_approval, so it is refused rather than filed.
+    //
+    // There is no "assignerIsClient applies it directly" shortcut here, unlike
+    // revise: a client must not be able to park work and clear the score.
+    if (status === 'hold' && supportsApproval) {
+      if (task.status === 'hold') return res.status(409).json({ error: 'This task is already on hold.' });
+      if (task.status === 'completed') return res.status(409).json({ error: 'A completed task cannot be put on hold. Reopen it first.' });
+      // The waiting_approval guard above lets privileged users straight past,
+      // so without this an admin could file the same hold twice and leave two
+      // rows on the HOD's screen for one task.
+      const [[dup]] = await db.query(
+        `SELECT id FROM task_approvals
+         WHERE task_id=? AND task_type=? AND action_type='hold' AND status='pending' LIMIT 1`,
+        [req.params.id, tt]);
+      if (dup) return res.status(409).json({ error: 'A hold request for this task is already waiting for approval.' });
+      const approverId = await resolveHoldApprover(task.assigned_to);
+      if (!approverId) {
+        return res.status(409).json({ error: 'No one could be found to approve a hold for this person — ask an admin to set the hold approver.' });
+      }
+      const holdReason = String(reason).trim().slice(0, 2000);
+      // The approver asking for it would only be approving their own request,
+      // so it applies at once — the same shortcut revise takes when the
+      // reviser is the assigner.
+      if (Number(approverId) === Number(uid)) {
+        await db.query(
+          `UPDATE delegation_tasks SET status='hold', waiting_approval=0, held_by=?, held_at=NOW(), hold_reason=? WHERE id=?`,
+          [uid, holdReason, req.params.id]);
+        logTaskActivity({ taskId: req.params.id, taskType: tt, oldStatus: task.status, newStatus: 'hold',
+          changedBy: uid, source: 'hold-self-approved', note: holdReason });
+        return res.json({ success: true, applied: true });
+      }
+      await db.query(
+        `INSERT INTO task_approvals (task_id,task_type,requested_by,requested_to,action_type,status,note)
+         VALUES (?,?,?,?,?,'pending',?)`,
+        [req.params.id, tt, uid, approverId, 'hold', holdReason]);
+      await db.query(`UPDATE ${table} SET waiting_approval=1 WHERE id=?`, [req.params.id]);
+      return res.json({ success: true, needsApproval: true });
     }
 
     // REVISE (date push) ALWAYS needs the assigner's approval — for every role,
@@ -1201,7 +1257,8 @@ app.get('/api/tasks/notifications', requireAuth, async (req, res) => {
          LEFT JOIN users a   ON t.assigned_by = a.id
          LEFT JOIN clients c ON t.client_id   = c.id
         WHERE t.assigned_to = ?
-          AND t.status <> 'completed'
+          -- A parked task must not pop up as new work for the doer.
+          AND t.status NOT IN ('completed','hold')
           AND t.created_at >= DATE_SUB(NOW(), INTERVAL 30 DAY)
         ORDER BY t.created_at DESC
         LIMIT 50`,

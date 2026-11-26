@@ -731,6 +731,24 @@ const _startupMigrationsPromise = (async () => {
   // is bounded by created_at for exactly that reason — see /api/tasks/unseen.
   await sa(`ALTER TABLE delegation_tasks ADD COLUMN seen_at DATETIME DEFAULT NULL AFTER created_at`);
   await sa(`ALTER TABLE delegation_tasks ADD INDEX idx_unseen (assigned_to, seen_at)`);
+  // A task whose client has called the work off. It cannot be marked completed
+  // -- it was never done -- and it cannot be deleted, because the record has to
+  // stay. 'hold' is a fourth status rather than a flag so that every query
+  // testing status has to account for it instead of silently counting it as
+  // pending, which is what dragged the doer's score down.
+  //
+  // Held work is left out of the performance score completely: out of pending,
+  // out of overdue, AND out of the total. Leaving it in the total would make
+  // the score rise as more work is parked, which is the opposite of fair.
+  //
+  // A hold has no end date by design. Coming off hold means setting a new due
+  // date, which is the existing Revise path.
+  await sa(`ALTER TABLE delegation_tasks MODIFY COLUMN status ENUM('pending','completed','revised','hold') DEFAULT 'pending'`);
+  // Who parked it, when, and why -- kept on the task itself so the record reads
+  // without joining the approval row it came from.
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN held_by INT DEFAULT NULL AFTER completed_at`);
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN held_at DATETIME DEFAULT NULL AFTER held_by`);
+  await sa(`ALTER TABLE delegation_tasks ADD COLUMN hold_reason TEXT DEFAULT NULL AFTER held_at`);
   // Sub-tasks — follow-up asks nested under a delegation task (e.g. client says
   // "make a dashboard" then later "change its color") instead of a brand-new task.
   await sa(`CREATE TABLE IF NOT EXISTS task_subtasks (
@@ -2526,6 +2544,7 @@ require('./backend/routes/tasks')(app, {
   canSeeTask,
   ensureTransferredFromCols,
   transferredFromSql,
+  resolveHoldApprover,
 });
 
 // ── Sub-tasks: follow-up asks nested under a delegation task (e.g. client says
@@ -2638,6 +2657,15 @@ app.put('/api/approvals/:id', requireAuth, async (req, res) => {
           await db.query(`UPDATE ${table} SET status='pending',waiting_approval=0,due_date=? WHERE id=?`, [appr.new_date_fmt, appr.task_id]);
         } else if (appr.action_type === 'revised') {
           await db.query(`UPDATE ${table} SET status='pending',waiting_approval=0 WHERE id=?`, [appr.task_id]);
+        } else if (appr.action_type === 'hold') {
+          // Hold approved → park the task and stamp who asked, when, and why.
+          // held_by is the REQUESTER, not the approver: the record is meant to
+          // say who wanted the work stopped. The reason is read from `appr`,
+          // which was loaded before the claim UPDATE above overwrote note with
+          // the approver's own.
+          await db.query(
+            `UPDATE delegation_tasks SET status='hold',waiting_approval=0,held_by=?,held_at=NOW(),hold_reason=? WHERE id=?`,
+            [appr.requested_by, appr.note || '', appr.task_id]);
         } else if (appr.task_type === 'delegation') {
           // Stamp completed_at here too — approving a completion is the moment
           // the task actually closes.
@@ -2748,12 +2776,16 @@ app.get('/api/mis', requireAuth, requireMisViewer, async (req, res) => {
       deptParams = [start, end, dept];
     }
 
+    // Held tasks are excluded in SQL, not here — they leave `total` as well as
+    // `pending` and `overdue`. Dropping them from `pending` alone would make
+    // the score RISE as more work is parked, which is the opposite of fair:
+    // the client called the work off, so it is neither credit nor a debt.
     const calc = rows => rows.map(r => {
       const total=parseInt(r.total)||0, pending=parseInt(r.pending)||0, overdue=parseInt(r.overdue)||0, revised=parseInt(r.revised)||0;
       let score = total > 0 ? Math.max(-100, Math.round((0-(pending/total)*100-(overdue/total)*50-(revised/total)*25)*10)/10) : 0;
       return { ...r, delayed: overdue, score };
     });
-    const [delRows] = await db.query(`SELECT u.id AS userId,u.name,COUNT(*) AS total,SUM(CASE WHEN t.status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS completed,SUM(CASE WHEN t.status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN t.status='pending' AND t.due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue FROM delegation_tasks t JOIN users u ON t.assigned_to=u.id WHERE t.due_date BETWEEN ? AND ? AND u.role <> 'client' AND u.client_id IS NULL ${deptFilter} GROUP BY u.id,u.name ORDER BY u.name`, deptParams);
+    const [delRows] = await db.query(`SELECT u.id AS userId,u.name,COUNT(*) AS total,SUM(CASE WHEN t.status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS completed,SUM(CASE WHEN t.status='revised' THEN 1 ELSE 0 END) AS revised,SUM(CASE WHEN t.status='pending' AND t.due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue FROM delegation_tasks t JOIN users u ON t.assigned_to=u.id WHERE t.due_date BETWEEN ? AND ? AND u.role <> 'client' AND u.client_id IS NULL AND t.status<>'hold' ${deptFilter} GROUP BY u.id,u.name ORDER BY u.name`, deptParams);
     const [chlRows] = await db.query(`SELECT u.id AS userId,u.name,COUNT(*) AS total,SUM(CASE WHEN t.status='pending' THEN 1 ELSE 0 END) AS pending,SUM(CASE WHEN t.status='completed' THEN 1 ELSE 0 END) AS completed,0 AS revised,SUM(CASE WHEN t.status='pending' AND t.due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue FROM checklist_tasks t JOIN users u ON t.assigned_to=u.id WHERE t.due_date BETWEEN ? AND ? AND u.role <> 'client' AND u.client_id IS NULL ${deptFilter} GROUP BY u.id,u.name ORDER BY u.name`, deptParams);
     // Weekly planned vs actual next to each row: the same per-week figures
     // Employee 360 shows, averaged over every week the range touches, so a
@@ -3174,7 +3206,8 @@ async function computeMisAll(start, end, dept, { images = true } = {}) {
         SUM(CASE WHEN t.status='revised' THEN 1 ELSE 0 END) AS revised,
         SUM(CASE WHEN t.status='pending' AND t.due_date<CURDATE() THEN 1 ELSE 0 END) AS overdue
        FROM delegation_tasks t JOIN users u ON t.assigned_to=u.id
-       WHERE t.due_date BETWEEN ? AND ? AND u.role <> 'client' AND u.client_id IS NULL ${deptFilter}
+       WHERE t.due_date BETWEEN ? AND ? AND u.role <> 'client' AND u.client_id IS NULL
+         AND t.status<>'hold' ${deptFilter}
        GROUP BY u.id, u.name, u.department ORDER BY u.name`, deptParams);
 
     const [chlRows] = await db.query(
@@ -4837,6 +4870,8 @@ async function weeklyPlanVsActual(userIds, mondays, cutoff, istToday) {
   // Bucket each task by the Monday of its due date (WEEKDAY: Mon=0).
   const wkExpr = `DATE_FORMAT(DATE_SUB(due_date, INTERVAL WEEKDAY(due_date) DAY),'%Y-%m-%d')`;
   // Sequential, not Promise.all: production runs close to max_user_connections.
+  // status<>'hold' below applies to both tables; checklist_tasks has no such
+  // status, so it costs nothing there and keeps the two queries identical.
   for (const [table, revisedCol] of [
     ['delegation_tasks', "SUM(CASE WHEN status='revised' THEN 1 ELSE 0 END)"],
     ['checklist_tasks', '0'],
@@ -4847,6 +4882,7 @@ async function weeklyPlanVsActual(userIds, mondays, cutoff, istToday) {
          ${revisedCol} AS revised,
          SUM(CASE WHEN status='pending' AND due_date<? THEN 1 ELSE 0 END) AS overdue
        FROM ${table} WHERE assigned_to IN (${uph}) AND due_date BETWEEN ? AND ?
+         AND status<>'hold'
        GROUP BY uid, wk`, [istToday, ...userIds, rangeStart, scoredEnd]);
     for (const r of rows) {
       const w = out[r.uid] && out[r.uid][r.wk];
@@ -4884,7 +4920,8 @@ async function getMyWeekBundle(userId) {
               SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) AS completed,
               SUM(CASE WHEN status='revised'   THEN 1 ELSE 0 END) AS revised,
               SUM(CASE WHEN status='pending' AND due_date < ? THEN 1 ELSE 0 END) AS overdue
-         FROM delegation_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ?`,
+         FROM delegation_tasks WHERE assigned_to=? AND due_date BETWEEN ? AND ?
+           AND status<>'hold'`,
       [todayStr, userId, start, end]);
     const [chl] = await db.query(
       `SELECT COUNT(*) AS total,
@@ -7056,7 +7093,9 @@ async function remindHandlersOfMissingDueDates({ force = false } = {}) {
         -- a date? — stops those immediately, with no data migration, and keeps
         -- the cron honest if anything else ever forgets the flag again.
         AND t.due_date IS NULL
-        AND t.status <> 'completed'
+        -- 'hold' as well as 'completed': a parked task has no date by
+        -- definition and would otherwise be nudged every four hours forever.
+        AND t.status NOT IN ('completed','hold')
         AND (a.role = 'client' OR a.client_id IS NOT NULL)
       ORDER BY t.assigned_to ASC, t.created_at ASC`);
 
@@ -7164,7 +7203,9 @@ async function sendClientPendingDigests({ force = false } = {}) {
        FROM delegation_tasks t
        JOIN users d   ON t.assigned_to = d.id
        JOIN clients c ON t.client_id   = c.id
-      WHERE t.status <> 'completed'
+      -- A held task must not chase the client for anything: they are the ones
+      -- who called the work off.
+      WHERE t.status NOT IN ('completed','hold')
         AND t.client_ask IS NOT NULL AND t.client_ask <> ''
         AND c.whatsapp_group_id IS NOT NULL AND c.whatsapp_group_id <> ''
       ORDER BY c.name ASC, d.name ASC, t.client_ask_by ASC`);
@@ -7305,7 +7346,8 @@ async function sendClientCompletedDigests() {
        JOIN users d            ON t.assigned_to = d.id
        JOIN clients c          ON t.client_id   = c.id
       WHERE s.status = 'completed' AND DATE(s.completed_at) = CURDATE()
-        AND t.status <> 'completed' ${scope}
+        -- Sub-task progress under a PARKED parent is not news for the client.
+        AND t.status NOT IN ('completed','hold') ${scope}
       ORDER BY c.name ASC, d.name ASC, s.completed_at ASC`);
 
   // Bucket both lists by client+handler — that pair is one message.
@@ -9929,6 +9971,49 @@ async function resolveLeaveApprover(userId) {
   const [adm] = await db.query(
     `SELECT id FROM users WHERE COALESCE(user_role, role)='admin' ORDER BY id ASC LIMIT 1`);
   return adm[0]?.id || null;
+}
+
+// Who decides a Hold request — the doer's own head of department.
+//
+// This is the one approval in this file that does NOT route to the task's
+// assigned_by. Parking a client's work is a management call about the doer's
+// workload and score, not a decision for whoever happened to hand the task
+// over (who, on a client-delegated task, is the client).
+//
+// Reads COALESCE(user_role, role) for the same reason resolveLeaveApprover
+// does: user_role is the org hierarchy, role is app permissions, and an IT
+// employee may be role='admin' while still reporting to a real HOD.
+//
+// A doer who IS the HOD cannot approve their own hold, so that case skips the
+// department lookup entirely and goes straight to the fixed approver — as does
+// a department with no HOD at all.
+async function resolveHoldApprover(userId) {
+  const [[me]] = await db.query(
+    `SELECT id, COALESCE(user_role, role) AS user_role, department
+     FROM users WHERE id=?`, [userId]);
+  if (!me) return null;
+  if (me.department && me.user_role !== 'hod') {
+    const [hods] = await db.query(
+      `SELECT id FROM users
+       WHERE COALESCE(user_role, role)='hod' AND department=? AND id<>? AND role<>'client'
+       ORDER BY id ASC LIMIT 1`, [me.department, me.id]);
+    if (hods[0]) return hods[0].id;
+  }
+  return holdFallbackApprover(me.id);
+}
+
+// The named approver a hold falls back to. Held in app_settings so it can be
+// changed without a deploy; the name is only the seed for a database that has
+// never had the setting written, which is the same shape — and the same
+// person — feedbackFixedUsers() already uses.
+async function holdFallbackApprover(exceptId) {
+  const byId = await usersForSetting('hold_approver_ids', 'id');
+  const pick = byId.find(u => u && u.id !== exceptId);
+  if (pick) return pick.id;
+  const [rows] = await db.query(
+    `SELECT id FROM users WHERE name='Simran Gurnani' AND role<>'client' AND id<>?
+     ORDER BY id ASC LIMIT 1`, [exceptId]);
+  return rows[0]?.id || null;
 }
 
 // A request's approver is fixed when it is filed. If the requester's department

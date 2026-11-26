@@ -659,7 +659,7 @@ function DelegateBody({ d, close }) {
 
 // ── Task Detail ──
 const TD_PRIORITY = { urgent: '#dc2626', high: '#ea580c', medium: '#d97706', low: '#16a34a' };
-const TD_STATUS = { pending: 'Pending', completed: 'Completed', revised: 'Revised', transferred: 'Transferred' };
+const TD_STATUS = { pending: 'Pending', completed: 'Completed', revised: 'Revised', transferred: 'Transferred', hold: 'On Hold' };
 const TD_SECTION = 'margin-top:14px;padding-top:14px;border-top:1px solid #e2e8f0';
 const TD_HEAD = 'font-size:12px;font-weight:700;color:#0f172a;margin-bottom:8px';
 const TD_TIME = { padding: '5px 8px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', background: '#fff' };

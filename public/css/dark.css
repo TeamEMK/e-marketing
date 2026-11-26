@@ -268,6 +268,8 @@
 :root.amb-dark:not([data-theme]) :is(.action-btn.done,.role-badge.user,.priority-badge.low,.status-badge.completed,.hrm-badge.Selected,.hrm-badge.offer-final){background:rgba(34,229,138,.12) !important;color:#22E58A !important;box-shadow:none !important;}
 :root.amb-dark:not([data-theme]) :is(.action-btn.delete,.priority-badge.urgent,.status-badge.pending,.hrm-badge.Rejected){background:rgba(255,107,129,.13) !important;color:#FF8A9A !important;box-shadow:none !important;}
 :root.amb-dark:not([data-theme]) :is(.action-btn.revise,.action-btn.reopen,.priority-badge.high,.status-badge.revised,.hrm-badge.Rescheduled){background:rgba(251,191,36,.13) !important;color:#FBBF24 !important;box-shadow:none !important;}
+/* Held tasks: the quietest badge on the dark theme too. */
+:root.amb-dark:not([data-theme]) .status-badge.hold{background:rgba(148,163,184,.14) !important;color:#CBD5E1 !important;box-shadow:none !important;}
 :root.amb-dark:not([data-theme]) :is(.role-badge.pc,.role-badge.hod,.hrm-badge.offer){background:rgba(168,85,247,.16) !important;color:#C4B5FD !important;}
 /* Shared report tables (.dr-table: Enquiry, Daily Reports) paint white cells. */
 :root.amb-dark:not([data-theme]) .dr-table td{background:transparent !important;color:#C9D2EA !important;border-color:var(--dk-line) !important;}

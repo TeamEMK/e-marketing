@@ -120,7 +120,10 @@ function TaskRow({ t, tasksType, isAdmin, showClientCol }) {
   const rowProps = isClickable
     ? { onClick: () => legacy('openTaskDetail', t), ref: css('cursor:pointer'), title: 'Click to view details' }
     : {};
-  const statusCls = ['pending', 'completed', 'revised'].includes(t.status) ? t.status : 'pending';
+  // 'hold' belongs in this list: without it a parked task fell through to the
+  // 'pending' fallback and wore the red Pending badge, which is the one thing
+  // the hold status exists to stop it claiming.
+  const statusCls = ['pending', 'completed', 'revised', 'hold'].includes(t.status) ? t.status : 'pending';
   return (
     <tr {...rowProps}>
       <td ref={css('white-space:nowrap;padding-right:12px')} onClick={stop}>{spaced(actions)}</td>

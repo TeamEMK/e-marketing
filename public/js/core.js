@@ -65,7 +65,7 @@ function renderDbmTable() {
       <td style="white-space:nowrap;font-size:12px;color:#64748b">${fmtDate(t.delegated_on||'')||'—'}</td>
       <td style="white-space:nowrap;font-size:12px">${fmtDate(t.due_date||'')||'—'}${isOverdue?' <span style="color:#dc2626;font-weight:600;font-size:10px">⏰ Overdue</span>':''}</td>
       <td style="font-size:12px;color:#64748b">${esc(t.remarks||'—')}</td>
-      <td><span class="status-badge ${['pending','completed','revised'].includes(t.status)?t.status:'pending'}">${t.status==='revised'?'Revision':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
+      <td><span class="status-badge ${['pending','completed','revised','hold'].includes(t.status)?t.status:'pending'}">${t.status==='revised'?'Revision':t.status.charAt(0).toUpperCase()+t.status.slice(1)}</span></td>
       <td style="white-space:nowrap">
         ${canEdit  ? `<button class="action-btn edit" style="padding:4px 7px" onclick="openEditTask(${t.id},'delegation')" title="Edit">✏️</button>` : ''}
         ${canDelete? `<button class="action-btn delete" style="padding:4px 7px;margin-left:3px" onclick="deleteTask(${t.id},'delegation')" title="Delete">🗑</button>` : ''}

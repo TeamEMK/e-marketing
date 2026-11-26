@@ -68,6 +68,9 @@ tbody tr:last-child td{border-bottom:none;}
 .status-badge.pending{background:#fef2f2;color:#b91c1c;box-shadow:inset 0 0 0 1px rgba(185,28,28,.08);}
 .status-badge.completed{background:#f0fdf4;color:#16a34a;box-shadow:inset 0 0 0 1px rgba(22,163,74,.08);}
 .status-badge.revised{background:#fffbeb;color:#92400e;box-shadow:inset 0 0 0 1px rgba(146,64,14,.08);}
+/* Parked at the client's request: deliberately the quietest of the four, so a
+   held task reads as set aside rather than as something owed or overdue. */
+.status-badge.hold{background:#f1f5f9;color:#475569;box-shadow:inset 0 0 0 1px rgba(71,85,105,.12);}
 
 .chart-card{background:#fff;border-radius:12px;border:1px solid #e2e8f0;padding:18px;}
 .chart-card h3{font-size:14px;font-weight:700;margin-bottom:14px;}
