@@ -6065,7 +6065,7 @@ const REMINDER_GROUP_ID = process.env.REMINDER_GROUP_ID || '919602694444-1618492
 const PENDING_SUMMARY_PHONE = process.env.PENDING_SUMMARY_PHONE || '9301878061';
 const EXCLUDED_DEPARTMENTS = ['CXO']; // case-insensitive match
 // The same "report not filled" message, only for one department, goes to that
-// department's own group at 6:30 PM IST (cron /api/cron/ba-daily-reminder).
+// department's own group at 7:00 PM IST (cron /api/cron/ba-daily-reminder).
 // The 8:00 PM message to the management group still lists everyone, this
 // department included.
 const DEPT_REMINDER_DEPARTMENT = process.env.DEPT_REMINDER_DEPARTMENT || 'Business Automation';
@@ -6803,7 +6803,7 @@ app.get('/api/cron/daily-reminder', async (req, res) => {
   }
 });
 
-// 6:30 PM IST: the same reminder for one department, to its own group. Says
+// 7:00 PM IST: the same reminder for one department, to its own group. Says
 // "everyone has filled" when they all have, as the 8:00 PM message does.
 app.get('/api/cron/ba-daily-reminder', async (req, res) => {
   const authHeader = req.headers['authorization'] || '';
