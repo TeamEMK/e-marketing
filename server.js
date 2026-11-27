@@ -8737,6 +8737,24 @@ const PEOPLE_SETTINGS_BY_ID = {
   theme_admin_ids: [41],
 };
 
+// Simran Gurnani, by PRODUCTION id. Two things fall to her: a task Hold whose
+// doer has no HOD (or IS the HOD), and that same person's work-from-home daily
+// report.
+//
+// In code rather than in PEOPLE_SETTINGS_BY_ID for the reason
+// BA_CREDENTIALS_VIEWER_IDS gives: that seed runs inside the startup migration
+// block, which returns early whenever _DEPLOY_ID matches — and _DEPLOY_ID
+// hashes only the two migration blocks. A deploy that changed this list and
+// nothing else would therefore never write it, and the value would silently
+// never arrive.
+//
+// By id, not by name: `users.name` is free text, so a rename breaks a name
+// match and a new joiner sharing the name inherits it. app_settings is still
+// read first, so the row can be written by hand to change this without a
+// deploy; this list is what applies when it is not.
+//   6  Simran Gurnani
+const FALLBACK_APPROVER_IDS = [6];
+
 async function readIdSetting(key) {
   try {
     const [[row]] = await db.query('SELECT value FROM app_settings WHERE key_name=?', [key]);
@@ -9332,6 +9350,49 @@ app.post('/api/daily-tasks', requireAuth, async (req, res) => {
         <p style="margin-top:14px">— E-Marketing Task Manager</p>
       </div>`;
       sendMail(target.email, `Daily Report Submitted — ${entry_date}`, html).catch(e => console.error('daily report email err:', e.message));
+
+      // On a work-from-home day the same report also goes to the doer's head of
+      // department, so the day is visible to the person it is visible to on any
+      // other day. The doer still gets their own confirmation above; this is a
+      // second mail, not a redirection, and carries no CC.
+      //
+      // isWfhOn counts a PENDING work-from-home request as well as an approved
+      // one, because WFH is routinely filed late and a pending request still
+      // describes where the person was. The consequence to know: a request that
+      // is rejected afterwards will already have sent this.
+      //
+      // Checked against entry_date, not today — the form accepts yesterday too,
+      // and it is that day's whereabouts that matter.
+      try {
+        if (await isWfhOn(req.session.userId, entry_date)) {
+          const boss = await resolveWfhReportRecipient(req.session.userId);
+          if (boss && boss.email !== target.email) {
+            const totalMin = cleanRows.reduce((a, r) => a + (Number(r[5]) || 0), 0);
+            const hrs = Math.floor(totalMin / 60), rem = totalMin % 60;
+            const wfhHtml = `<div style="font-family:Arial,Helvetica,sans-serif;font-size:14px;color:#111;line-height:1.6">
+              <p><strong>${esc(target.name || '')}</strong> was on <strong>Work From Home</strong> on <strong>${esc(entry_date)}</strong>
+              and has filed the daily report below — ${cleanRows.length} ${cleanRows.length === 1 ? 'entry' : 'entries'}.</p>
+              ${boss.isFallback ? `<p style="font-size:13px;color:#92400e;background:#fffbeb;border:1px solid #fde68a;border-radius:6px;padding:8px 10px">
+                Sent to you because this person has no head of department on record.</p>` : ''}
+              <table style="border-collapse:collapse;font-size:13px;margin-top:4px">
+                <thead><tr>
+                  <th style="padding:5px 9px;border:1px solid #e2e8f0;text-align:left;background:#f8fafc">Client</th>
+                  <th style="padding:5px 9px;border:1px solid #e2e8f0;text-align:left;background:#f8fafc">Task</th>
+                  <th style="padding:5px 9px;border:1px solid #e2e8f0;background:#f8fafc">Duration</th>
+                </tr></thead>
+                <tbody>${rowsHtml}</tbody>
+                <tfoot><tr>
+                  <td colspan="2" style="padding:5px 9px;border:1px solid #e2e8f0;text-align:right;font-weight:700;background:#f8fafc">Total</td>
+                  <td style="padding:5px 9px;border:1px solid #e2e8f0;text-align:right;font-weight:700;white-space:nowrap;background:#f8fafc">${totalMin} min${hrs ? ` (${hrs}h ${rem}m)` : ''}</td>
+                </tr></tfoot>
+              </table>
+              <p style="margin-top:14px">— E-Marketing Task Manager</p>
+            </div>`;
+            sendMail(boss.email, `Work From Home — daily report — ${target.name || ''} — ${entry_date}`, wfhHtml)
+              .catch(e => console.error('wfh report email err:', e.message));
+          }
+        }
+      } catch (e) { console.error('wfh report check err:', e.message); }
     }
 
     // The filing time, so the page can tell the submitter when it was filed.
@@ -10002,18 +10063,63 @@ async function resolveHoldApprover(userId) {
   return holdFallbackApprover(me.id);
 }
 
-// The named approver a hold falls back to. Held in app_settings so it can be
-// changed without a deploy; the name is only the seed for a database that has
-// never had the setting written, which is the same shape — and the same
-// person — feedbackFixedUsers() already uses.
+// The approver a hold falls back to: app_settings.hold_approver_ids if that row
+// has been written by hand, otherwise FALLBACK_APPROVER_IDS from code. By id
+// throughout — a name match breaks on a rename and is inherited by a new joiner
+// with the same name.
 async function holdFallbackApprover(exceptId) {
   const byId = await usersForSetting('hold_approver_ids', 'id');
   const pick = byId.find(u => u && u.id !== exceptId);
   if (pick) return pick.id;
+  const coded = FALLBACK_APPROVER_IDS.find(id => Number(id) !== Number(exceptId));
+  if (!coded) return null;
+  // Confirm the id still belongs to a live non-client account before handing a
+  // request to it.
   const [rows] = await db.query(
-    `SELECT id FROM users WHERE name='Simran Gurnani' AND role<>'client' AND id<>?
-     ORDER BY id ASC LIMIT 1`, [exceptId]);
+    `SELECT id FROM users WHERE id=? AND role<>'client' LIMIT 1`, [coded]);
   return rows[0]?.id || null;
+}
+
+// Who receives a work-from-home day's daily report: the doer's own head of
+// department. Read from COALESCE(user_role, role) for the reason
+// resolveLeaveApprover documents — role is app permissions, user_role is the
+// org chart, and an IT employee may be role='admin' while still reporting to a
+// real HOD.
+//
+// A doer who IS the HOD, or whose department has no HOD, falls to
+// app_settings.wfh_report_fallback_ids if that row exists, else to
+// FALLBACK_APPROVER_IDS in code — by id either way. Returns null when nobody
+// can be named, and the caller then sends nothing rather than mailing this to
+// the wrong person.
+async function resolveWfhReportRecipient(userId) {
+  const [[me]] = await db.query(
+    `SELECT id, COALESCE(user_role, role) AS user_role, department
+     FROM users WHERE id=?`, [userId]);
+  if (!me) return null;
+  if (me.department && me.user_role !== 'hod') {
+    const [hods] = await db.query(
+      `SELECT id FROM users
+       WHERE COALESCE(user_role, role)='hod' AND department=? AND id<>? AND role<>'client'
+       ORDER BY id ASC LIMIT 1`, [me.department, me.id]);
+    if (hods[0]) {
+      const t = await getNotifyTarget(hods[0].id);
+      if (t && t.email) return { ...t, isFallback: false };
+    }
+  }
+  const byId = await usersForSetting('wfh_report_fallback_ids', 'id');
+  const pick = byId.find(u => u && u.id !== me.id);
+  let fallbackId = pick ? pick.id : null;
+  if (!fallbackId) {
+    const coded = FALLBACK_APPROVER_IDS.find(id => Number(id) !== Number(me.id));
+    if (coded) {
+      const [rows] = await db.query(
+        `SELECT id FROM users WHERE id=? AND role<>'client' LIMIT 1`, [coded]);
+      fallbackId = rows[0]?.id || null;
+    }
+  }
+  if (!fallbackId) return null;
+  const t = await getNotifyTarget(fallbackId);
+  return t && t.email ? { ...t, isFallback: true } : null;
 }
 
 // A request's approver is fixed when it is filed. If the requester's department
